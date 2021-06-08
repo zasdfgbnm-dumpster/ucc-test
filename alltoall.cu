@@ -9,10 +9,6 @@ using T = int;
 int world_size;
 int rank;
 
-int set_device() {
-  check_cuda(cudaSetDevice(rank));
-}
-
 void check(bool condition, std::string msg = "") {
   if (!condition) {
     std::cerr << msg << std::endl;
@@ -26,6 +22,10 @@ void check_cuda(cudaError_t err) {
 
 void check_cuda() {
   check_cuda(cudaGetLastError());
+}
+
+void set_device() {
+  check_cuda(cudaSetDevice(rank));
 }
 
 std::vector<T *> buffers;
