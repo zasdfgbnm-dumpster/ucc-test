@@ -77,7 +77,9 @@ int main(int argc, char *argv[]) {
   initialize_buffers();
   std::cout << std::endl << "Buffers initialized as:" << std::endl;
   print_buffers();
+
   alltoall();
+
   std::cout << std::endl << "After alltoall, buffers are:" << std::endl;
   print_buffers();
 }
