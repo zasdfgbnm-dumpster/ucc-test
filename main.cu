@@ -32,6 +32,10 @@ void set_device() {
   check_cuda(cudaSetDevice(get_device()));
 }
 
+void set_device(int i) {
+  check_cuda(cudaSetDevice(i));
+}
+
 std::vector<T *> buffers;
 
 void allocate_buffers() {
