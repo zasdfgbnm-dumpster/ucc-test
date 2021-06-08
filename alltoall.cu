@@ -53,6 +53,7 @@ void initialize_buffers() {
 }
 
 void print_buffers() {
+  cudaDeviceSynchronize();
   for (int i = 0; i < world_size; i++) {
     T *host = new T[N];
     check_cuda(cudaMemcpy(host, buffers[i], sizeof(T) * N, cudaMemcpyDefault));
