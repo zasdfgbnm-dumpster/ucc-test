@@ -29,9 +29,14 @@ std::vector<T *> buffers;
 void allocate_buffers() {
   for (int i = 0; i < world_size; i++) {
     void *ptr;
-    check_cuda(cudaMallocManaged(&ptr, sizeof(T) * N));
+    check_cuda(cudaSetDevice(rank));
+    check_cuda(cudaMalloc(&ptr, sizeof(T) * N));
     buffers.push_back(reinterpret_cast<T *>(ptr));
   }
+}
+
+__global__ void write_value(T *ptr, T value) {
+  *ptr = value;
 }
 
 void initialize_buffers() {
@@ -42,16 +47,19 @@ void initialize_buffers() {
   for (int i = 0; i < world_size; i++) {
     for (int j = 0; j < N; j++) {
       T value = (i == rank ? d(gen): 0);
-      buffers[i][j] = value;
+      write_value<<<1, 1>>>(buffers[i] + j, value);
     }
   }
 }
 
 void print_buffers() {
   for (int i = 0; i < world_size; i++) {
+    T *host = new T[N];
+    check_cuda(cudaMemcpy(host, buffers[i], sizeof(T) * N, cudaMemcpyDefault));
     for (int j = 0; j < N; j++) {
-      std::cout << buffers[i][j] << ", ";
+      std::cout << host[j] << ", ";
     }
+    delete [] host;
     std::cout << std::endl;
   }
 }
