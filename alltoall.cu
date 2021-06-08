@@ -15,9 +15,10 @@ ucc_datatype_t dtype = UCC_DT_FLOAT32;
 extern const int N;
 extern int world_size;
 extern int rank;
-const int size_ = 5;  // TODO: what is this?
+const int size_ = 5; // TODO: what is this?
 
 void check(bool, std::string);
+void check_cuda(cudaError_t);
 int get_device();
 
 constexpr auto kUnsetTimeout = std::chrono::milliseconds(-1);
@@ -47,6 +48,11 @@ public:
 };
 
 cudaStream_t getStreamFromPool(int dev) {
+  // TODO
+  return 0;
+}
+
+cudaStream_t getCurrentCUDAStream(int dev) {
   // TODO
   return 0;
 }
@@ -137,6 +143,7 @@ enum torch_ucx_tag_type_t { TORCH_UCX_P2P_TAG, TORCH_UCX_OOB_TAG };
 
 struct event_pool_t {
   std::queue<std::unique_ptr<cudaEvent_t>> event_pool;
+  std::mutex event_pool_mutex;
 };
 
 class WorkUCC {
@@ -252,7 +259,29 @@ void initComm(int dev) {
   }
 }
 
-void alltoall() {
+std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
+                                      std::unique_ptr<WorkData> data,
+                                      int dev) {
+  std::unique_ptr<cudaEvent_t> cuda_ev;
+  {
+    std::lock_guard<std::mutex> lock(ep.event_pool_mutex);
+    if (ep.event_pool.empty()) {
+      cuda_ev = std::make_unique<cudaEvent_t>();
+    } else {
+      cuda_ev = std::move(ep.event_pool.front());
+      ep.event_pool.pop();
+    }
+  }
+  auto current_stream = getCurrentCUDAStream(dev);
+  check_cuda(cudaEventRecord(*cuda_ev, current_stream));
+  check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
+  auto work =
+      comm->enqueue_cuda_collective(opType, coll, std::move(data), team,
+                                    cuda_ee, std::move(cuda_ev), *stream, &ep);
+  return work;
+}
+
+std::shared_ptr<WorkUCC> alltoall() {
   std::vector<int64_t> outputSplitSizes;
   std::vector<int64_t> inputSplitSizes;
 
@@ -287,7 +316,8 @@ void alltoall() {
     // c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
     // computeLengthsAndOffsets(outputSplitSizes, outputTensor,
     //                          &data->recv_lengths, &data->recv_offsets);
-    // computeLengthsAndOffsets(inputSplitSizes, inputTensor, &data->send_lengths,
+    // computeLengthsAndOffsets(inputSplitSizes, inputTensor,
+    // &data->send_lengths,
     //                          &data->send_offsets);
     coll.mask = UCC_COLL_ARGS_FIELD_FLAGS;
     coll.coll_type = UCC_COLL_TYPE_ALLTOALLV;
