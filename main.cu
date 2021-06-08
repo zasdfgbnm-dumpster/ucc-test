@@ -24,8 +24,12 @@ void check_cuda() {
   check_cuda(cudaGetLastError());
 }
 
+int get_device() {
+  return rank;
+}
+
 void set_device() {
-  check_cuda(cudaSetDevice(rank));
+  check_cuda(cudaSetDevice(get_device()));
 }
 
 std::vector<T *> buffers;
