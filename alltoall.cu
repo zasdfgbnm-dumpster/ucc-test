@@ -738,11 +738,12 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
 }
 
 std::shared_ptr<WorkUCC> alltoall() {
+  initProcessGroupUCC({}, world_size, rank);
+  initComm(get_device());
+
   // TODO initialize them
   std::vector<int64_t> outputSplitSizes;
   std::vector<int64_t> inputSplitSizes;
-
-  initComm(get_device());
   ucc_coll_args_t coll;
   AlltoallWorkData *data;
 
