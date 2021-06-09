@@ -26,9 +26,7 @@ constexpr auto kUnsetTimeout = std::chrono::milliseconds(-1);
 
 enum OpType { ALLTOALL_BASE };
 
-bool isP2POp(OpType) {
-  return true;
-}
+bool isP2POp(OpType) { return true; }
 
 class Store {};
 
@@ -682,6 +680,15 @@ ucc_ee_h cuda_ee;
 std::shared_ptr<cudaStream_t> stream =
     nullptr; // TODO, it was unique_ptr in its original code
 event_pool_t ep;
+
+void initProcessGroupUCC(const std::shared_ptr<Store> &store, int rank,
+                         int size) {
+  oob.rank = rank;
+  oob.size = size;
+  oob.store = store;
+  comm = nullptr;
+  cuda_ee = nullptr;
+}
 
 void initComm(int dev) {
   if (!comm) {
