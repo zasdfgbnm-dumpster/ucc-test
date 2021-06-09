@@ -26,6 +26,10 @@ constexpr auto kUnsetTimeout = std::chrono::milliseconds(-1);
 
 enum OpType { ALLTOALL_BASE };
 
+bool isP2POp(OpType) {
+  return true;
+}
+
 class Store {};
 
 #define TORCH_UCC_DEVICE_NOT_SET -2
@@ -204,56 +208,56 @@ public:
 };
 
 ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
-  void *coll_info, void **req) {
-// torch_ucc_oob_coll_info_t *info =
-//     reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
-// std::vector<uint8_t> val =
-//     std::vector<uint8_t>(reinterpret_cast<uint8_t *>(sbuf),
-//                          reinterpret_cast<uint8_t *>(sbuf) + msglen);
-// info->store->set(info->getKey("teamr" + std::to_string(info->rank)), val);
-// info->rbuf = rbuf;
-// info->msglen = msglen;
-// *req = coll_info;
-return UCC_OK;
+                           void *coll_info, void **req) {
+  // torch_ucc_oob_coll_info_t *info =
+  //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
+  // std::vector<uint8_t> val =
+  //     std::vector<uint8_t>(reinterpret_cast<uint8_t *>(sbuf),
+  //                          reinterpret_cast<uint8_t *>(sbuf) + msglen);
+  // info->store->set(info->getKey("teamr" + std::to_string(info->rank)), val);
+  // info->rbuf = rbuf;
+  // info->msglen = msglen;
+  // *req = coll_info;
+  return UCC_OK;
 }
 
 ucc_status_t oob_allgather_test(void *req) {
-// torch_ucc_oob_coll_info_t *info =
-//     reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
+  // torch_ucc_oob_coll_info_t *info =
+  //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
 
-// for (int r = 0; r < info->size; r++) {
-//   if (!info->store->check({info->getKey("teamr" + std::to_string(r))})) {
-//     return UCC_INPROGRESS;
-//   }
-// }
-// for (int r = 0; r < info->size; r++) {
-//   std::vector<uint8_t> data =
-//       info->store->get(info->getKey("teamr" + std::to_string(r)));
-//   memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
-//          info->msglen);
-// }
-return UCC_OK;
+  // for (int r = 0; r < info->size; r++) {
+  //   if (!info->store->check({info->getKey("teamr" + std::to_string(r))})) {
+  //     return UCC_INPROGRESS;
+  //   }
+  // }
+  // for (int r = 0; r < info->size; r++) {
+  //   std::vector<uint8_t> data =
+  //       info->store->get(info->getKey("teamr" + std::to_string(r)));
+  //   memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
+  //          info->msglen);
+  // }
+  return UCC_OK;
 }
 
 ucc_status_t oob_allgather_free(void *req) {
-// torch_ucc_oob_coll_info_t *info =
-//     reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
-// int num_done = info->store->add({info->getKey("ag_done")}, 1);
-// if (num_done == info->size) {
-//   info->store->deleteKey(info->getKey("ag_done"));
-//   for (int r = 0; r < info->size; r++) {
-//     info->store->deleteKey(info->getKey("teamr" + std::to_string(r)));
-//   }
-//   for (int r = 0; r < info->size; r++) {
-//     info->store->add({info->getKey("ag_free" + std::to_string(r))}, 1);
-//   }
-// } else {
-//   info->store->wait({info->getKey("ag_free" +
-//   std::to_string(info->rank))});
-// }
-// info->store->deleteKey(info->getKey("ag_free" +
-// std::to_string(info->rank)));
-return UCC_OK;
+  // torch_ucc_oob_coll_info_t *info =
+  //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
+  // int num_done = info->store->add({info->getKey("ag_done")}, 1);
+  // if (num_done == info->size) {
+  //   info->store->deleteKey(info->getKey("ag_done"));
+  //   for (int r = 0; r < info->size; r++) {
+  //     info->store->deleteKey(info->getKey("teamr" + std::to_string(r)));
+  //   }
+  //   for (int r = 0; r < info->size; r++) {
+  //     info->store->add({info->getKey("ag_free" + std::to_string(r))}, 1);
+  //   }
+  // } else {
+  //   info->store->wait({info->getKey("ag_free" +
+  //   std::to_string(info->rank))});
+  // }
+  // info->store->deleteKey(info->getKey("ag_free" +
+  // std::to_string(info->rank)));
+  return UCC_OK;
 }
 
 CommUCC::CommUCC(torch_ucc_oob_coll_info_t *oob_info) {
@@ -340,6 +344,26 @@ protected:
   CommBase *comm_;
 };
 
+WorkUCC::~WorkUCC() {
+  check(request_ == nullptr, "TorchUCC, request wasn't finalized");
+  if (fence && ep) {
+    std::lock_guard<std::mutex> lock(ep->event_pool_mutex);
+    ep->event_pool.push(std::move(fence));
+  }
+}
+
+void WorkUCC::finalize() {
+  if (request_ != nullptr) {
+    if (isP2POp(opType)) {
+      request_->status = UCC_INPROGRESS;
+      ucp_request_free(request_);
+    } else {
+      ucc_collective_finalize(request_);
+    }
+    status_ = UCC_OK;
+    request_ = nullptr;
+  }
+}
 
 class CommPG {
   CommUCX ucx_comm;
