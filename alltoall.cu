@@ -38,7 +38,7 @@ void Store::set(const std::string &key, const std::vector<uint8_t> &value) {
   // TODO: do real work
   std::cout << "Store::set(" << key << ", [";
   for (uint8_t i : value) {
-    std::cout << i << ", ";
+    std::cout << (int)i << ", ";
   }
   std::cout << "]);" << std::endl;
 }
@@ -712,6 +712,7 @@ void initProcessGroupUCC(const std::shared_ptr<Store> &store, int rank,
 
 void initComm(int dev) {
   if (!comm) {
+    set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
     comm->ucx_connect_eps(eps, &oob);
     comm->ucc_create_team(team, &oob);
