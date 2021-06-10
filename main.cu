@@ -12,7 +12,6 @@ int rank;
 
 void check(bool condition, std::string msg = "") {
   if (!condition) {
-    std::cerr << msg << std::endl;
     throw std::runtime_error(msg);
   }
 }
