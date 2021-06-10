@@ -18,6 +18,7 @@ void check(bool condition, std::string msg = "") {
 #define TORCH_UCX_RANK_MASK (TORCH_UCX_MAX_RANK << TORCH_UCX_RANK_BITS_OFFSET)
 
 int main() {
+  const int comm_size = 2;
   ucp_context_h context;
   ucp_worker_h worker;
 
@@ -26,8 +27,6 @@ int main() {
     ucp_config_t *config;
     ucs_status_t st;
     ucp_worker_params_t worker_params;
-
-    const int comm_size = 2;
 
     st = ucp_config_read("TORCH", nullptr, &config);
     check(st == UCS_OK,
@@ -49,6 +48,7 @@ int main() {
     ucp_config_release(config);
     check(st == UCS_OK,
           std::string("failed to init UCP context: ") + ucs_status_string(st));
+    std::cout << "Context initialized successfully." << std::endl;
     memset(&worker_params, 0, sizeof(ucp_worker_params_t));
     worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
     worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
@@ -56,6 +56,7 @@ int main() {
     check(st == UCS_OK,
           std::string("failed to create UCP worker: ") + ucs_status_string(st));
     ucp_cleanup(context);
+    std::cout << "Worker created successfully." << std::endl;
   }
 
   {
@@ -70,6 +71,7 @@ int main() {
         reinterpret_cast<uint8_t *>(local_addr),
         reinterpret_cast<uint8_t *>(local_addr) + local_addr_len);
 
+    std::cout << "Address is:" << std::endl;
     for (uint8_t i : val) {
       std::cout << i << ", ";
     }
