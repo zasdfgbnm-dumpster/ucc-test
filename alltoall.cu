@@ -1,5 +1,6 @@
 #include <condition_variable>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -30,20 +31,22 @@ enum OpType { ALLTOALL_BASE };
 bool isP2POp(OpType) { return true; }
 
 struct Store {
-  void set(const std::string &key, const std::vector<uint8_t> &value);
-  std::vector<uint8_t> get(const std::string &key);
+  void set(const std::string &key, const std::vector<char> &value);
+  std::vector<char> get(const std::string &key);
 };
 
-void Store::set(const std::string &key, const std::vector<uint8_t> &value) {
+void Store::set(const std::string &key, const std::vector<char> &value) {
   // TODO: do real work
   std::cout << "Store::set(" << key << ", [";
   for (uint8_t i : value) {
     std::cout << (int)i << ", ";
   }
   std::cout << "]);" << std::endl;
+  std::ofstream output(key + ".bin", std::ios::binary);
+  std::copy(value.begin(), value.end(), std::ostreambuf_iterator<char>(output));
 }
 
-std::vector<uint8_t> Store::get(const std::string &key) {
+std::vector<char> Store::get(const std::string &key) {
   std::cout << "Store::get(" << key << ");" << std::endl;
   return {};
 }
@@ -227,9 +230,9 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
                            void *coll_info, void **req) {
   // torch_ucc_oob_coll_info_t *info =
   //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
-  // std::vector<uint8_t> val =
-  //     std::vector<uint8_t>(reinterpret_cast<uint8_t *>(sbuf),
-  //                          reinterpret_cast<uint8_t *>(sbuf) + msglen);
+  // std::vector<char> val =
+  //     std::vector<char>(reinterpret_cast<char *>(sbuf),
+  //                          reinterpret_cast<char *>(sbuf) + msglen);
   // info->store->set(info->getKey("teamr" + std::to_string(info->rank)), val);
   // info->rbuf = rbuf;
   // info->msglen = msglen;
@@ -247,7 +250,7 @@ ucc_status_t oob_allgather_test(void *req) {
   //   }
   // }
   // for (int r = 0; r < info->size; r++) {
-  //   std::vector<uint8_t> data =
+  //   std::vector<char> data =
   //       info->store->get(info->getKey("teamr" + std::to_string(r)));
   //   memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
   //          info->msglen);
@@ -477,13 +480,13 @@ void CommPG::ucx_connect_eps(std::vector<ucp_ep_h> &eps,
   ucs_status_t st;
   ucp_address_t *local_addr;
   size_t local_addr_len;
-  std::vector<uint8_t> peer_addr;
+  std::vector<char> peer_addr;
 
   st = ucp_worker_get_address(ucx_comm.worker, &local_addr, &local_addr_len);
   check(st == UCS_OK, "failed to get worker address");
-  std::vector<uint8_t> val = std::vector<uint8_t>(
-      reinterpret_cast<uint8_t *>(local_addr),
-      reinterpret_cast<uint8_t *>(local_addr) + local_addr_len);
+  std::vector<char> val =
+      std::vector<char>(reinterpret_cast<char *>(local_addr),
+                        reinterpret_cast<char *>(local_addr) + local_addr_len);
   oob->store->set(oob->getKey("wa" + std::to_string(oob->rank)), val);
   ucp_worker_release_address(ucx_comm.worker, local_addr);
   eps.resize(oob->size);
