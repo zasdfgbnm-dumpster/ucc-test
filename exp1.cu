@@ -73,7 +73,7 @@ int main() {
 
     std::cout << "Address is:" << std::endl;
     for (uint8_t i : val) {
-      std::cout << i << ", ";
+      std::cout << (int)i << ", ";
     }
     std::cout << std::endl;
 
