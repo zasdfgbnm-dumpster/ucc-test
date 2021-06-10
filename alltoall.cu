@@ -7,6 +7,8 @@
 #include <queue>
 #include <string>
 #include <thread>
+#include <chrono>
+#include <filesystem>
 
 #include <ucc/api/ucc.h>
 #include <ucp/api/ucp.h>
@@ -35,20 +37,35 @@ struct Store {
   std::vector<char> get(const std::string &key);
 };
 
-void Store::set(const std::string &key, const std::vector<char> &value) {
-  // TODO: do real work
-  std::cout << "Store::set(" << key << ", [";
-  for (uint8_t i : value) {
-    std::cout << (int)i << ", ";
+std::ostream &operator<<(std::ostream &os, const std::vector<char> &value) {
+  bool first = true;
+  os << "[";
+  for (char i : value) {
+    if (!first) {
+      os << ", ";
+    }
+    os << (int)i;
+    first = false;
   }
-  std::cout << "]);" << std::endl;
+  os << "]";
+  return os;
+}
+
+void Store::set(const std::string &key, const std::vector<char> &value) {
+  std::cout << "Store::set(" << key << ", " << value << ");" << std::endl;
   std::ofstream output(key + ".bin", std::ios::binary);
   std::copy(value.begin(), value.end(), std::ostreambuf_iterator<char>(output));
 }
 
 std::vector<char> Store::get(const std::string &key) {
-  std::cout << "Store::get(" << key << ");" << std::endl;
-  return {};
+  std::string filename = key + ".bin";
+  while (!std::filesystem::exists(filename)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  std::ifstream input(filename, std::ios::binary);
+  auto result = std::vector<char>(std::istreambuf_iterator<char>(input), {});
+  std::cout << "Store::get(" << key << ") = " << result << std::endl;
+  return result;
 }
 
 #define TORCH_UCC_DEVICE_NOT_SET -2
