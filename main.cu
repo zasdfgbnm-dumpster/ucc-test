@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdlib>
 #include <random>
+#include <stdexcept>
 
 const int N = 5;
 using T = int;
@@ -12,7 +13,7 @@ int rank;
 void check(bool condition, std::string msg = "") {
   if (!condition) {
     std::cerr << msg << std::endl;
-    exit(1);
+    throw std::runtime_error(msg);
   }
 }
 

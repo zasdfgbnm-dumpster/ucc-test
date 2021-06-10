@@ -1,5 +1,6 @@
 #include <condition_variable>
 #include <deque>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -28,7 +29,24 @@ enum OpType { ALLTOALL_BASE };
 
 bool isP2POp(OpType) { return true; }
 
-class Store {};
+struct Store {
+  void set(const std::string &key, const std::vector<uint8_t> &value);
+  std::vector<uint8_t> get(const std::string &key);
+};
+
+void Store::set(const std::string &key, const std::vector<uint8_t> &value) {
+  // TODO: do real work
+  std::cout << "Store::set(" << key << ", [";
+  for (uint8_t i : value) {
+    std::cout << i << ", ";
+  }
+  std::cout << "]);" << std::endl;
+}
+
+std::vector<uint8_t> Store::get(const std::string &key) {
+  std::cout << "Store::get(" << key << ");" << std::endl;
+  return {};
+}
 
 #define TORCH_UCC_DEVICE_NOT_SET -2
 
@@ -456,50 +474,51 @@ std::shared_ptr<CommPG> CommPG::get_comm(uint32_t &id, int dev,
 
 void CommPG::ucx_connect_eps(std::vector<ucp_ep_h> &eps,
                              torch_ucc_oob_coll_info_t *oob) {
-  // ucs_status_t st;
-  // ucp_address_t *local_addr;
-  // size_t local_addr_len;
-  // std::vector<uint8_t> peer_addr;
+  ucs_status_t st;
+  ucp_address_t *local_addr;
+  size_t local_addr_len;
+  std::vector<uint8_t> peer_addr;
 
-  // st = ucp_worker_get_address(ucx_comm.worker, &local_addr, &local_addr_len);
-  // check(st == UCS_OK, "failed to get worker address");
-  // std::vector<uint8_t> val = std::vector<uint8_t>(
-  //     reinterpret_cast<uint8_t *>(local_addr),
-  //     reinterpret_cast<uint8_t *>(local_addr) + local_addr_len);
-  // oob->store->set(oob->getKey("wa" + std::to_string(oob->rank)), val);
-  // ucp_worker_release_address(ucx_comm.worker, local_addr);
-  // eps.resize(oob->size);
-  // for (int i = 0; i < oob->size; i++) {
-  //   peer_addr = oob->store->get(oob->getKey("wa" + std::to_string(i)));
-  //   ucp_ep_params_t ep_params;
-  //   ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
-  //   ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
-  //   st = ucp_ep_create(ucx_comm.worker, &ep_params, &(eps[i]));
-  //   check(st == UCS_OK, "failed to create endpoint");
-  // }
+  st = ucp_worker_get_address(ucx_comm.worker, &local_addr, &local_addr_len);
+  check(st == UCS_OK, "failed to get worker address");
+  std::vector<uint8_t> val = std::vector<uint8_t>(
+      reinterpret_cast<uint8_t *>(local_addr),
+      reinterpret_cast<uint8_t *>(local_addr) + local_addr_len);
+  oob->store->set(oob->getKey("wa" + std::to_string(oob->rank)), val);
+  ucp_worker_release_address(ucx_comm.worker, local_addr);
+  eps.resize(oob->size);
+  for (int i = 0; i < oob->size; i++) {
+    peer_addr = oob->store->get(oob->getKey("wa" + std::to_string(i)));
+    ucp_ep_params_t ep_params;
+    ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
+    ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
+    st = ucp_ep_create(ucx_comm.worker, &ep_params, &(eps[i]));
+    check(st == UCS_OK, "failed to create endpoint");
+  }
 }
 
-void CommPG::ucx_disconnect_eps(std::vector<ucp_ep_h> &eps,
-                                torch_ucc_oob_coll_info_t *oob) {
-  // ucs_status_t st;
+// TODO: remove this?
+// void CommPG::ucx_disconnect_eps(std::vector<ucp_ep_h> &eps,
+//                                 torch_ucc_oob_coll_info_t *oob) {
+//   ucs_status_t st;
 
-  // for (ucp_ep_h &ep : eps) {
-  //   ucs_status_ptr_t close_req = ucp_ep_close_nb(ep,
-  //   UCP_EP_CLOSE_MODE_FLUSH); check(!UCS_PTR_IS_ERR(close_req), "failed to
-  //   close endpoint"); if (UCS_PTR_IS_PTR(close_req)) {
-  //     do {
-  //       ucp_worker_progress(ucx_comm.worker);
-  //       st = ucp_request_check_status(close_req);
-  //     } while (st != UCS_OK);
-  //     ucp_request_free(close_req);
-  //   }
-  // }
-  // if ((size_t)oob->store->add(oob->getKey("epclosed"), 1) == eps.size()) {
-  //   oob->store->add(oob->getKey("epfinished"), 1);
-  // } else {
-  //   oob->store->wait({oob->getKey("epfinished")});
-  // }
-}
+//   for (ucp_ep_h &ep : eps) {
+//     ucs_status_ptr_t close_req = ucp_ep_close_nb(ep,
+//     UCP_EP_CLOSE_MODE_FLUSH); check(!UCS_PTR_IS_ERR(close_req), "failed to
+//     close endpoint"); if (UCS_PTR_IS_PTR(close_req)) {
+//       do {
+//         ucp_worker_progress(ucx_comm.worker);
+//         st = ucp_request_check_status(close_req);
+//       } while (st != UCS_OK);
+//       ucp_request_free(close_req);
+//     }
+//   }
+//   if ((size_t)oob->store->add(oob->getKey("epclosed"), 1) == eps.size()) {
+//     oob->store->add(oob->getKey("epfinished"), 1);
+//   } else {
+//     oob->store->wait({oob->getKey("epfinished")});
+//   }
+// }
 
 // TODO: can I delete this?
 // ucc_coll_req_h CommPG::send_nb(ucp_ep_h ep, void *data, ucs_memory_type_t
@@ -683,6 +702,7 @@ event_pool_t ep;
 
 void initProcessGroupUCC(const std::shared_ptr<Store> &store, int rank,
                          int size) {
+  // TODO: should size be world size?
   oob.rank = rank;
   oob.size = size;
   oob.store = store;
@@ -738,7 +758,7 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
 }
 
 std::shared_ptr<WorkUCC> alltoall() {
-  initProcessGroupUCC({}, world_size, rank);
+  initProcessGroupUCC({}, rank, world_size); // TODO use a real store
   initComm(get_device());
 
   // TODO initialize them
