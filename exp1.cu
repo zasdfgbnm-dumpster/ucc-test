@@ -91,9 +91,12 @@ int main(int argc, const char *argv[]) {
   const int world_size = std::stoi(argv[1]);
   const int rank = std::stoi(argv[2]);
 
+  cudaSetDevice(rank);
+
   ucp_context_h context;
   ucp_worker_h worker;
   Store store;
+  std::vector<ucp_ep_h> eps;
 
   { // create worker
     ucp_params_t params;
@@ -147,7 +150,15 @@ int main(int argc, const char *argv[]) {
     store.set("address:" + std::to_string(rank), val);
   }
 
-  {  // get peer address
-
+  {  // create endpoints
+    eps.resize(world_size);
+    for (int i = 0; i < world_size; i++) {
+      std::vector<char> peer_addr = store.get("address:" + std::to_string(i));
+      ucp_ep_params_t ep_params;
+      ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
+      ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
+      ucs_status_t st = ucp_ep_create(worker, &ep_params, &(eps[i]));
+      check(st == UCS_OK, "failed to create endpoint");
+    }
   }
 }
