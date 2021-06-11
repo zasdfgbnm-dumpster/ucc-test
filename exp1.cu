@@ -95,7 +95,7 @@ int main(int argc, const char *argv[]) {
   ucp_worker_h worker;
   Store store;
 
-  {
+  { // create worker
     ucp_params_t params;
     ucp_config_t *config;
     ucs_status_t st;
@@ -132,7 +132,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Worker created successfully." << std::endl;
   }
 
-  {
+  { // get self address
     ucs_status_t st;
     ucp_address_t *local_addr;
     size_t local_addr_len;
@@ -143,7 +143,11 @@ int main(int argc, const char *argv[]) {
         reinterpret_cast<char *>(local_addr),
         reinterpret_cast<char *>(local_addr) + local_addr_len);
     ucp_worker_release_address(worker, local_addr);
-    std::cout << "Worker created successfully." << std::endl;
+    std::cout << "Self address obtained." << std::endl;
     store.set("address:" + std::to_string(rank), val);
+  }
+
+  {  // get peer address
+
   }
 }
