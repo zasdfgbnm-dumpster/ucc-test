@@ -35,6 +35,7 @@ bool isP2POp(OpType) { return true; }
 struct Store {
   void set(const std::string &key, const std::vector<char> &value);
   std::vector<char> get(const std::string &key);
+  bool check(const std::vector<std::string>& keys);
 };
 
 std::ostream &operator<<(std::ostream &os, const std::vector<char> &value) {
@@ -45,6 +46,20 @@ std::ostream &operator<<(std::ostream &os, const std::vector<char> &value) {
       os << ", ";
     }
     os << (int)i;
+    first = false;
+  }
+  os << "]";
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const std::vector<std::string> &value) {
+  bool first = true;
+  os << "[";
+  for (std::string i : value) {
+    if (!first) {
+      os << ", ";
+    }
+    os << i;
     first = false;
   }
   os << "]";
@@ -65,6 +80,19 @@ std::vector<char> Store::get(const std::string &key) {
   std::ifstream input(filename, std::ios::binary);
   auto result = std::vector<char>(std::istreambuf_iterator<char>(input), {});
   std::cout << "Store::get(" << key << ") = " << result << std::endl;
+  return result;
+}
+
+bool Store::check(const std::vector<std::string>& keys) {
+  bool result = true;
+  for (std::string key : keys) {
+    std::string filename = key + ".bin";
+    result = result && std::filesystem::exists(filename);
+  }
+  if (result) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  std::cout << "Store::check(" << keys << ") = " << result << ";" << std::endl;
   return result;
 }
 
@@ -245,33 +273,33 @@ public:
 
 ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
                            void *coll_info, void **req) {
-  // torch_ucc_oob_coll_info_t *info =
-  //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
-  // std::vector<char> val =
-  //     std::vector<char>(reinterpret_cast<char *>(sbuf),
-  //                          reinterpret_cast<char *>(sbuf) + msglen);
-  // info->store->set(info->getKey("teamr" + std::to_string(info->rank)), val);
-  // info->rbuf = rbuf;
-  // info->msglen = msglen;
-  // *req = coll_info;
+  torch_ucc_oob_coll_info_t *info =
+      reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
+  std::vector<char> val =
+      std::vector<char>(reinterpret_cast<char *>(sbuf),
+                           reinterpret_cast<char *>(sbuf) + msglen);
+  info->store->set(info->getKey("teamr" + std::to_string(info->rank)), val);
+  info->rbuf = rbuf;
+  info->msglen = msglen;
+  *req = coll_info;
   return UCC_OK;
 }
 
 ucc_status_t oob_allgather_test(void *req) {
-  // torch_ucc_oob_coll_info_t *info =
-  //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
+  torch_ucc_oob_coll_info_t *info =
+      reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
 
-  // for (int r = 0; r < info->size; r++) {
-  //   if (!info->store->check({info->getKey("teamr" + std::to_string(r))})) {
-  //     return UCC_INPROGRESS;
-  //   }
-  // }
-  // for (int r = 0; r < info->size; r++) {
-  //   std::vector<char> data =
-  //       info->store->get(info->getKey("teamr" + std::to_string(r)));
-  //   memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
-  //          info->msglen);
-  // }
+  for (int r = 0; r < info->size; r++) {
+    if (!info->store->check({info->getKey("teamr" + std::to_string(r))})) {
+      return UCC_INPROGRESS;
+    }
+  }
+  for (int r = 0; r < info->size; r++) {
+    std::vector<char> data =
+        info->store->get(info->getKey("teamr" + std::to_string(r)));
+    memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
+           info->msglen);
+  }
   return UCC_OK;
 }
 
@@ -596,6 +624,7 @@ void CommPG::ucc_create_team(ucc_team_h &team,
   team_params.ep = oob_info->rank;
   team_params.ep_range = UCC_COLLECTIVE_EP_RANGE_CONTIG;
   st = ucc_team_create_post(&ucc_comm.context, 1, &team_params, &team);
+  std::cout << "ucc_team_create_post" << std::endl;
   check(st == UCC_OK,
         std::string("failed to post team create: ") + ucc_status_string(st));
   do {
@@ -603,6 +632,7 @@ void CommPG::ucc_create_team(ucc_team_h &team,
   } while (st == UCC_INPROGRESS);
   check(st == UCC_OK,
         std::string("failed to create UCC team: ") + ucc_status_string(st));
+  std::cout << "ucc_create_team" << std::endl;
 }
 
 void CommPG::ucc_destroy_team(ucc_team_h &team) {
