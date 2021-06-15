@@ -262,6 +262,7 @@ ucc_status_t oob_allgather_free(void *req) {
 }
 
 CommUCC::CommUCC(torch_ucc_oob_coll_info_t *oob_info) {
+  return;
   ucc_lib_config_h lib_config;
   ucc_context_config_h context_config;
   ucc_lib_params_t lib_params;
@@ -704,6 +705,7 @@ void initComm(int dev) {
     set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
     comm->ucx_connect_eps(eps, &oob);
+    return;
     comm->ucc_create_team(team, &oob);
   } else {
     check((comm->cuda_device_index == TORCH_UCC_DEVICE_NOT_SET) ||

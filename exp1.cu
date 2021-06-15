@@ -18,10 +18,13 @@
 #define TORCH_UCX_MAX_RANK ((((uint64_t)1) << TORCH_UCX_RANK_BITS) - 1)
 #define TORCH_UCX_RANK_MASK (TORCH_UCX_MAX_RANK << TORCH_UCX_RANK_BITS_OFFSET)
 
+int world_size;
+int rank;
+
 int main(int argc, const char *argv[]) {
   check(argc == 3, "Bad argument");
-  const int world_size = std::stoi(argv[1]);
-  const int rank = std::stoi(argv[2]);
+  world_size = std::stoi(argv[1]);
+  rank = std::stoi(argv[2]);
 
   cudaSetDevice(rank);
 
