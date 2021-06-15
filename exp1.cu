@@ -1,11 +1,11 @@
-#include <iostream>
-#include <fstream>
-#include <stdexcept>
-#include <vector>
-#include <filesystem>
 #include <chrono>
-#include <thread>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include <ucc/api/ucc.h>
 #include <ucp/api/ucp.h>
@@ -21,9 +21,16 @@
 int world_size;
 int rank;
 
+Store store;
+
+std::string rank_string() {
+  return std::string("[") + std::to_string(rank) + "]";
+}
+
+namespace ucx {
+
 ucp_context_h context;
 ucp_worker_h worker;
-Store store;
 std::vector<ucp_ep_h> eps;
 
 void create_worker() { // create worker
@@ -53,7 +60,7 @@ void create_worker() { // create worker
   ucp_config_release(config);
   check(st == UCS_OK,
         std::string("failed to init UCP context: ") + ucs_status_string(st));
-  std::cout << "Context initialized successfully." << std::endl;
+  std::cout << rank_string() << "[UCX] Context initialized successfully." << std::endl;
   memset(&worker_params, 0, sizeof(ucp_worker_params_t));
   worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
   worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
@@ -61,7 +68,7 @@ void create_worker() { // create worker
   check(st == UCS_OK,
         std::string("failed to create UCP worker: ") + ucs_status_string(st));
   ucp_cleanup(context);
-  std::cout << "Worker created successfully." << std::endl;
+  std::cout << rank_string() << "[UCX] Worker created successfully." << std::endl;
 }
 
 void get_self_address() { // get self address
@@ -71,15 +78,15 @@ void get_self_address() { // get self address
 
   st = ucp_worker_get_address(worker, &local_addr, &local_addr_len);
   check(st == UCS_OK, "failed to get worker address");
-  std::vector<char> val = std::vector<char>(
-      reinterpret_cast<char *>(local_addr),
-      reinterpret_cast<char *>(local_addr) + local_addr_len);
+  std::vector<char> val =
+      std::vector<char>(reinterpret_cast<char *>(local_addr),
+                        reinterpret_cast<char *>(local_addr) + local_addr_len);
   ucp_worker_release_address(worker, local_addr);
-  std::cout << "Self address obtained." << std::endl;
+  std::cout << rank_string() << "[UCX] Self address obtained." << std::endl;
   store.set("address:" + std::to_string(rank), val);
 }
 
-void create_endpoints() {  // create endpoints
+void create_endpoints() { // create endpoints
   eps.resize(world_size);
   for (int i = 0; i < world_size; i++) {
     std::vector<char> peer_addr = store.get("address:" + std::to_string(i));
@@ -89,7 +96,110 @@ void create_endpoints() {  // create endpoints
     ucs_status_t st = ucp_ep_create(worker, &ep_params, &(eps[i]));
     check(st == UCS_OK, "failed to create endpoint");
   }
+  std::cout << rank_string() << "[UCX] End points created." << std::endl;
 }
+
+} // namespace ucx
+
+namespace ucc {
+
+ucc_lib_h lib;
+ucc_context_h context;
+
+struct torch_ucc_oob_coll_info_t {
+  int rank;
+  int size;
+  void *rbuf;
+  size_t msglen;
+} oob;
+
+ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
+                           void *coll_info, void **req) {
+  torch_ucc_oob_coll_info_t *info =
+      reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
+  std::vector<char> val = std::vector<char>(
+      reinterpret_cast<char *>(sbuf), reinterpret_cast<char *>(sbuf) + msglen);
+  store.set("teamr" + std::to_string(info->rank), val);
+  info->rbuf = rbuf;
+  info->msglen = msglen;
+  *req = coll_info;
+  return UCC_OK;
+}
+
+ucc_status_t oob_allgather_test(void *req) {
+  torch_ucc_oob_coll_info_t *info =
+      reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
+
+  for (int r = 0; r < info->size; r++) {
+    if (!store.check({"teamr" + std::to_string(r)})) {
+      return UCC_INPROGRESS;
+    }
+  }
+  for (int r = 0; r < info->size; r++) {
+    std::vector<char> data =
+        store.get("teamr" + std::to_string(r));
+    memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
+           info->msglen);
+  }
+  return UCC_OK;
+}
+
+ucc_status_t oob_allgather_free(void *req) {
+  // TODO: do something
+  return UCC_OK;
+}
+
+void create_context() {
+  ucc_lib_config_h lib_config;
+  ucc_context_config_h context_config;
+  ucc_lib_params_t lib_params;
+  ucc_context_params_t context_params;
+  ucc_status_t st;
+
+  auto oob_info = &oob;
+
+  st = ucc_lib_config_read("TORCH", nullptr, &lib_config);
+  check(st == UCC_OK,
+        std::string("failed to read UCC lib config: ") + ucc_status_string(st));
+  memset(&lib_params, 0, sizeof(ucc_lib_params_t));
+  lib_params.mask = UCC_LIB_PARAM_FIELD_THREAD_MODE;
+  lib_params.thread_mode = UCC_THREAD_MULTIPLE;
+  st = ucc_init(&lib_params, lib_config, &lib);
+  ucc_lib_config_release(lib_config);
+  check(st == UCC_OK,
+        std::string("failed to init UCC lib: ") + ucc_status_string(st));
+  ucc_lib_attr_t lib_attr;
+  lib_attr.mask = UCC_LIB_ATTR_FIELD_THREAD_MODE;
+  st = ucc_lib_get_attr(lib, &lib_attr);
+  check(st == UCC_OK,
+        std::string("failed to query for lib attr: ") + ucc_status_string(st));
+  check(lib_attr.thread_mode == UCC_THREAD_MULTIPLE,
+        "ucc library wasn't initialized with mt support "
+        "check ucc compile options ");
+  st = ucc_context_config_read(lib, NULL, &context_config);
+  check(st == UCC_OK, std::string("failed to read UCC context config: ") +
+                          ucc_status_string(st));
+  st = ucc_context_config_modify(context_config, NULL, "ESTIMATED_NUM_EPS",
+                                 std::to_string(oob_info->size).c_str());
+  check(st == UCC_OK, std::string("failed to modify UCC context config: ") +
+                          ucc_status_string(st));
+  memset(&context_params, 0, sizeof(ucc_context_params_t));
+  context_params.mask =
+      UCC_CONTEXT_PARAM_FIELD_TYPE | UCC_CONTEXT_PARAM_FIELD_OOB;
+  context_params.type = UCC_CONTEXT_SHARED;
+  context_params.oob.participants = oob_info->size;
+  context_params.oob.allgather = oob_allgather;
+  context_params.oob.req_test = oob_allgather_test;
+  context_params.oob.req_free = oob_allgather_free;
+  context_params.oob.coll_info = oob_info;
+  ucc_context_create(lib, &context_params, context_config, &context);
+  ucc_context_config_release(context_config);
+  check(st == UCC_OK,
+        std::string("failed to create UCC context: ") + ucc_status_string(st));
+  std::cout << rank_string() << "[UCC] Context created." << std::endl;
+}
+
+} // namespace ucc
 
 int main(int argc, const char *argv[]) {
   check(argc == 3, "Bad argument");
@@ -98,9 +208,11 @@ int main(int argc, const char *argv[]) {
 
   cudaSetDevice(rank);
 
-  create_worker();
-  get_self_address();
-  create_endpoints();
+  ucx::create_worker();
+  ucx::get_self_address();
+  ucx::create_endpoints();
+
+  ucc::create_context();
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 }
