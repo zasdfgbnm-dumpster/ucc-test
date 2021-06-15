@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 struct Store {
   void set(const std::string &key, const std::vector<char> &value);
@@ -10,3 +11,9 @@ struct Store {
 
 std::ostream &operator<<(std::ostream &os, const std::vector<char> &value);
 std::ostream &operator<<(std::ostream &os, const std::vector<std::string> &value);
+
+inline void check(bool condition, std::string msg = "") {
+  if (!condition) {
+    throw std::runtime_error(msg);
+  }
+}

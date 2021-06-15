@@ -23,7 +23,6 @@ extern int world_size;
 extern int rank;
 const int size_ = 5; // TODO: what is this?
 
-void check(bool, std::string);
 void check_cuda(cudaError_t);
 int get_device();
 void set_device(int i);

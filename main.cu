@@ -10,12 +10,6 @@ using T = int;
 int world_size;
 int rank;
 
-void check(bool condition, std::string msg = "") {
-  if (!condition) {
-    throw std::runtime_error(msg);
-  }
-}
-
 void check_cuda(cudaError_t err) {
   check(err == cudaSuccess, cudaGetErrorString(err));
 }
