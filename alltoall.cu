@@ -750,7 +750,7 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
 }
 
 std::shared_ptr<WorkUCC> alltoall() {
-  initProcessGroupUCC({}, rank, world_size); // TODO use a real store
+  initProcessGroupUCC(std::make_shared<Store>(Store{true}), rank, world_size);
   initComm(get_device());
 
   // TODO initialize them
