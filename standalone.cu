@@ -111,7 +111,6 @@ ucc_team_h team;
 
 struct torch_ucc_oob_coll_info_t {
   int rank;
-  int size;
   void *rbuf;
   size_t msglen;
 } oob;
@@ -133,12 +132,12 @@ ucc_status_t oob_allgather_test(void *req) {
   torch_ucc_oob_coll_info_t *info =
       reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
 
-  for (int r = 0; r < info->size; r++) {
+  for (int r = 0; r < world_size; r++) {
     if (!store.check({"teamr" + std::to_string(r)})) {
       return UCC_INPROGRESS;
     }
   }
-  for (int r = 0; r < info->size; r++) {
+  for (int r = 0; r < world_size; r++) {
     std::vector<char> data = store.get("teamr" + std::to_string(r));
     memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
            info->msglen);
@@ -182,14 +181,14 @@ void create_context() {
   check(st == UCC_OK, std::string("failed to read UCC context config: ") +
                           ucc_status_string(st));
   st = ucc_context_config_modify(context_config, NULL, "ESTIMATED_NUM_EPS",
-                                 std::to_string(oob_info->size).c_str());
+                                 std::to_string(world_size).c_str());
   check(st == UCC_OK, std::string("failed to modify UCC context config: ") +
                           ucc_status_string(st));
   memset(&context_params, 0, sizeof(ucc_context_params_t));
   context_params.mask =
       UCC_CONTEXT_PARAM_FIELD_TYPE | UCC_CONTEXT_PARAM_FIELD_OOB;
   context_params.type = UCC_CONTEXT_SHARED;
-  context_params.oob.participants = oob_info->size;
+  context_params.oob.participants = world_size;
   context_params.oob.allgather = oob_allgather;
   context_params.oob.req_test = oob_allgather_test;
   context_params.oob.req_free = oob_allgather_free;
@@ -201,7 +200,9 @@ void create_context() {
   std::cout << rank_string() << "[UCC] Context created." << std::endl;
 }
 
-void create_team(ucc_team_h &team, torch_ucc_oob_coll_info_t *oob_info) {
+void create_team() {
+  auto oob_info = &oob;
+
   ucc_status_t st;
   ucc_team_params_t team_params;
   team_params.mask = UCC_TEAM_PARAM_FIELD_EP | UCC_TEAM_PARAM_FIELD_EP_RANGE |
@@ -210,11 +211,11 @@ void create_team(ucc_team_h &team, torch_ucc_oob_coll_info_t *oob_info) {
   team_params.oob.req_test = oob_allgather_test;
   team_params.oob.req_free = oob_allgather_free;
   team_params.oob.coll_info = oob_info;
-  team_params.oob.participants = oob_info->size;
-  team_params.ep = oob_info->rank;
+  team_params.oob.participants = world_size;
+  team_params.ep = rank;
   team_params.ep_range = UCC_COLLECTIVE_EP_RANGE_CONTIG;
-  st = ucc_team_create_post(&ucc_comm.context, 1, &team_params, &team);
-  std::cout << "ucc_team_create_post" << std::endl;
+  st = ucc_team_create_post(&context, 1, &team_params, &team);
+  std::cout << rank_string() << "[UCC] Creating team..." << std::endl;
   check(st == UCC_OK,
         std::string("failed to post team create: ") + ucc_status_string(st));
   do {
@@ -222,7 +223,7 @@ void create_team(ucc_team_h &team, torch_ucc_oob_coll_info_t *oob_info) {
   } while (st == UCC_INPROGRESS);
   check(st == UCC_OK,
         std::string("failed to create UCC team: ") + ucc_status_string(st));
-  std::cout << "ucc_create_team finished" << std::endl;
+  std::cout << rank_string() << "[UCC] Team created." << std::endl;
 }
 
 } // namespace ucc
@@ -239,6 +240,7 @@ int main(int argc, const char *argv[]) {
   ucx::create_endpoints();
 
   ucc::create_context();
+  ucc::create_team();
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 }
