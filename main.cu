@@ -5,6 +5,8 @@
 #include <random>
 #include <stdexcept>
 
+#include "utils.hpp"
+
 const int N = 5;
 using T = int;
 int world_size;

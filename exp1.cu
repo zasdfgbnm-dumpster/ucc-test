@@ -10,6 +10,8 @@
 #include <ucc/api/ucc.h>
 #include <ucp/api/ucp.h>
 
+#include "utils.hpp"
+
 #define TORCH_UCX_COMM_BITS 15
 #define TORCH_UCX_RANK_BITS 16
 #define TORCH_UCX_RANK_BITS_OFFSET TORCH_UCX_COMM_BITS
