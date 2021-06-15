@@ -94,4 +94,5 @@ int main(int argc, const char *argv[]) {
       check(st == UCS_OK, "failed to create endpoint");
     }
   }
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 }
