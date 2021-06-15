@@ -479,7 +479,6 @@ void CommPG::ucx_connect_eps(std::vector<ucp_ep_h> &eps,
     ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
     ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
     st = ucp_ep_create(ucx_comm.worker, &ep_params, &(eps[i]));
-    std::cout << st << std::endl;
     check(st == UCS_OK, std::string("failed to create endpoint: ") + ucs_status_string(st));
     std::cout << "CommPG::ucx_connect_eps done" << std::endl;
   }
@@ -750,7 +749,7 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
 }
 
 std::shared_ptr<WorkUCC> alltoall() {
-  initProcessGroupUCC(std::make_shared<Store>(Store{true}), rank, world_size);
+  initProcessGroupUCC(std::make_shared<Store>(Store{false}), rank, world_size);
   initComm(get_device());
 
   // TODO initialize them
