@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rm -rf *.bin a.out
+rm -rf *.bin a.out *.lock
 
 export UCX_TLS=tcp
 

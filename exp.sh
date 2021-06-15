@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export UCX_TLS=tcp
-rm -f *.bin a.out
+rm -f *.bin a.out *.lock
 
 nvcc utils.cpp exp1.cu -std=c++17 -I $UCC_HOME/include -L $UCC_HOME/lib -lucc -lucs -lucp
 

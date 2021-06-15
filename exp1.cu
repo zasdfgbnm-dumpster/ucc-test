@@ -37,7 +37,7 @@ int main(int argc, const char *argv[]) {
     ucp_worker_params_t worker_params;
 
     st = ucp_config_read(nullptr, nullptr, &config);
-    ucp_config_print(config, stdout, "UCP config", UCS_CONFIG_PRINT_CONFIG);
+    // ucp_config_print(config, stdout, "UCP config", UCS_CONFIG_PRINT_CONFIG);
     check(st == UCS_OK,
           std::string("failed to read UCP config: ") + ucs_status_string(st));
     memset(&params, 0, sizeof(ucp_params_t));

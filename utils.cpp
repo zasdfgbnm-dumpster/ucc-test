@@ -4,29 +4,30 @@
 #include <thread>
 #include <filesystem>
 #include <chrono>
+#include <cstring>
 
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-const std::string lockfile = "lock";
+#include <errno.h>
 
 template<int locktype>
 class FileLock {
   int fd;
+  std::string filename;
 public:
-  FileLock() {
-    fd = open(lockfile.c_str(), O_CREAT);
-    check(fd >= 0, "unable to open lock file");
+  FileLock(std::string key):filename(key + ".lock") {
+    fd = open(filename.c_str(), O_CREAT, 0644);
+    check(fd >= 0, "unable to open lock file " + filename + ", error: " + strerror(errno));
     int err = flock(fd, locktype);
-    check(err == 0, "unable to lock file");
+    check(err == 0, "unable to lock file " + filename + ", error: " + strerror(errno));
   }
   ~FileLock() {
     int err = flock(fd, LOCK_UN);
-    check(err == 0, "unable to unlock file");
+    check(err == 0, "unable to unlock file " + filename + ", error: " + strerror(errno));
     err = close(fd);
-    check(err == 0, "unable to close file");
+    check(err == 0, "unable to close file " + filename + ", error: " + strerror(errno));
   }
 };
 
@@ -59,14 +60,14 @@ std::ostream &operator<<(std::ostream &os, const std::vector<std::string> &value
 }
 
 void Store::set(const std::string &key, const std::vector<char> &value) {
-  FileLock<LOCK_EX> lock;
+  FileLock<LOCK_EX> lock(key);
   std::cout << "Store::set(" << key << ", " << value << ");" << std::endl;
   std::ofstream output(key + ".bin", std::ios::binary);
   std::copy(value.begin(), value.end(), std::ostreambuf_iterator<char>(output));
 }
 
 std::vector<char> Store::get(const std::string &key) {
-  FileLock<LOCK_SH> lock;
+  FileLock<LOCK_SH> lock(key);
   std::string filename = key + ".bin";
   while (!std::filesystem::exists(filename)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -78,7 +79,6 @@ std::vector<char> Store::get(const std::string &key) {
 }
 
 bool Store::check(const std::vector<std::string>& keys) {
-  FileLock<LOCK_SH> lock;
   bool result = true;
   for (std::string key : keys) {
     std::string filename = key + ".bin";
