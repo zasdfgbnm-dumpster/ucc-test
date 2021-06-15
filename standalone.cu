@@ -60,7 +60,8 @@ void create_worker() { // create worker
   ucp_config_release(config);
   check(st == UCS_OK,
         std::string("failed to init UCP context: ") + ucs_status_string(st));
-  std::cout << rank_string() << "[UCX] Context initialized successfully." << std::endl;
+  std::cout << rank_string() << "[UCX] Context initialized successfully."
+            << std::endl;
   memset(&worker_params, 0, sizeof(ucp_worker_params_t));
   worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
   worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
@@ -68,7 +69,8 @@ void create_worker() { // create worker
   check(st == UCS_OK,
         std::string("failed to create UCP worker: ") + ucs_status_string(st));
   ucp_cleanup(context);
-  std::cout << rank_string() << "[UCX] Worker created successfully." << std::endl;
+  std::cout << rank_string() << "[UCX] Worker created successfully."
+            << std::endl;
 }
 
 void get_self_address() { // get self address
@@ -105,6 +107,7 @@ namespace ucc {
 
 ucc_lib_h lib;
 ucc_context_h context;
+ucc_team_h team;
 
 struct torch_ucc_oob_coll_info_t {
   int rank;
@@ -136,8 +139,7 @@ ucc_status_t oob_allgather_test(void *req) {
     }
   }
   for (int r = 0; r < info->size; r++) {
-    std::vector<char> data =
-        store.get("teamr" + std::to_string(r));
+    std::vector<char> data = store.get("teamr" + std::to_string(r));
     memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
            info->msglen);
   }
@@ -197,6 +199,30 @@ void create_context() {
   check(st == UCC_OK,
         std::string("failed to create UCC context: ") + ucc_status_string(st));
   std::cout << rank_string() << "[UCC] Context created." << std::endl;
+}
+
+void create_team(ucc_team_h &team, torch_ucc_oob_coll_info_t *oob_info) {
+  ucc_status_t st;
+  ucc_team_params_t team_params;
+  team_params.mask = UCC_TEAM_PARAM_FIELD_EP | UCC_TEAM_PARAM_FIELD_EP_RANGE |
+                     UCC_TEAM_PARAM_FIELD_OOB;
+  team_params.oob.allgather = oob_allgather;
+  team_params.oob.req_test = oob_allgather_test;
+  team_params.oob.req_free = oob_allgather_free;
+  team_params.oob.coll_info = oob_info;
+  team_params.oob.participants = oob_info->size;
+  team_params.ep = oob_info->rank;
+  team_params.ep_range = UCC_COLLECTIVE_EP_RANGE_CONTIG;
+  st = ucc_team_create_post(&ucc_comm.context, 1, &team_params, &team);
+  std::cout << "ucc_team_create_post" << std::endl;
+  check(st == UCC_OK,
+        std::string("failed to post team create: ") + ucc_status_string(st));
+  do {
+    st = ucc_team_create_test(team);
+  } while (st == UCC_INPROGRESS);
+  check(st == UCC_OK,
+        std::string("failed to create UCC team: ") + ucc_status_string(st));
+  std::cout << "ucc_create_team finished" << std::endl;
 }
 
 } // namespace ucc

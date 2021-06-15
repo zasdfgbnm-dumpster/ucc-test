@@ -571,7 +571,7 @@ void CommPG::ucc_create_team(ucc_team_h &team,
   } while (st == UCC_INPROGRESS);
   check(st == UCC_OK,
         std::string("failed to create UCC team: ") + ucc_status_string(st));
-  std::cout << "ucc_create_team" << std::endl;
+  std::cout << "ucc_create_team finished" << std::endl;
 }
 
 void CommPG::ucc_destroy_team(ucc_team_h &team) {
@@ -704,7 +704,6 @@ void initComm(int dev) {
     set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
     comm->ucx_connect_eps(eps, &oob);
-    return;
     comm->ucc_create_team(team, &oob);
   } else {
     check((comm->cuda_device_index == TORCH_UCC_DEVICE_NOT_SET) ||
