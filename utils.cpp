@@ -67,11 +67,11 @@ void Store::set(const std::string &key, const std::vector<char> &value) {
 }
 
 std::vector<char> Store::get(const std::string &key) {
-  FileLock<LOCK_SH> lock(key);
   std::string filename = key + ".bin";
   while (!std::filesystem::exists(filename)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
+  FileLock<LOCK_SH> lock(key);
   std::ifstream input(filename, std::ios::binary);
   auto result = std::vector<char>(std::istreambuf_iterator<char>(input), {});
   std::cout << "Store::get(" << key << ") = " << result << std::endl;
