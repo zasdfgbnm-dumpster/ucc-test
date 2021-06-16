@@ -21,7 +21,7 @@
 int world_size;
 int rank;
 
-Store store;
+Store store{false};
 
 std::string rank_string() {
   return std::string("[") + std::to_string(rank) + "]";
@@ -110,10 +110,9 @@ ucc_context_h context;
 ucc_team_h team;
 
 struct torch_ucc_oob_coll_info_t {
-  int rank;
   void *rbuf;
   size_t msglen;
-} oob;
+};
 
 ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
                            void *coll_info, void **req) {
@@ -121,7 +120,7 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
       reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
   std::vector<char> val = std::vector<char>(
       reinterpret_cast<char *>(sbuf), reinterpret_cast<char *>(sbuf) + msglen);
-  store.set("teamr" + std::to_string(info->rank), val);
+  store.set("teamr" + std::to_string(rank), val);
   info->rbuf = rbuf;
   info->msglen = msglen;
   *req = coll_info;
@@ -151,6 +150,8 @@ ucc_status_t oob_allgather_free(void *req) {
 }
 
 void create_context() {
+  static torch_ucc_oob_coll_info_t oob;
+
   ucc_lib_config_h lib_config;
   ucc_context_config_h context_config;
   ucc_lib_params_t lib_params;
@@ -159,7 +160,7 @@ void create_context() {
 
   auto oob_info = &oob;
 
-  st = ucc_lib_config_read("TORCH", nullptr, &lib_config);
+  st = ucc_lib_config_read(nullptr, nullptr, &lib_config);
   check(st == UCC_OK,
         std::string("failed to read UCC lib config: ") + ucc_status_string(st));
   memset(&lib_params, 0, sizeof(ucc_lib_params_t));
@@ -167,6 +168,7 @@ void create_context() {
   lib_params.thread_mode = UCC_THREAD_MULTIPLE;
   st = ucc_init(&lib_params, lib_config, &lib);
   ucc_lib_config_release(lib_config);
+
   check(st == UCC_OK,
         std::string("failed to init UCC lib: ") + ucc_status_string(st));
   ucc_lib_attr_t lib_attr;
@@ -201,6 +203,7 @@ void create_context() {
 }
 
 void create_team() {
+  static torch_ucc_oob_coll_info_t oob;
   auto oob_info = &oob;
 
   ucc_status_t st;
@@ -235,9 +238,9 @@ int main(int argc, const char *argv[]) {
 
   cudaSetDevice(rank);
 
-  ucx::create_worker();
-  ucx::get_self_address();
-  ucx::create_endpoints();
+  // ucx::create_worker();
+  // ucx::get_self_address();
+  // ucx::create_endpoints();
 
   ucc::create_context();
   ucc::create_team();
