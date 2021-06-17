@@ -216,6 +216,7 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
       std::vector<char>(reinterpret_cast<char *>(sbuf),
                            reinterpret_cast<char *>(sbuf) + msglen);
   info->store->set(info->getKey("teamr" + std::to_string(info->rank)), val);
+  std::cout << "All gather: " << info->getKey("teamr" + std::to_string(info->rank)) << std::endl;
   info->rbuf = rbuf;
   info->msglen = msglen;
   *req = coll_info;
@@ -262,7 +263,6 @@ ucc_status_t oob_allgather_free(void *req) {
 }
 
 CommUCC::CommUCC(torch_ucc_oob_coll_info_t *oob_info) {
-  return;
   ucc_lib_config_h lib_config;
   ucc_context_config_h context_config;
   ucc_lib_params_t lib_params;
@@ -307,6 +307,7 @@ CommUCC::CommUCC(torch_ucc_oob_coll_info_t *oob_info) {
   ucc_context_config_release(context_config);
   check(st == UCC_OK,
         std::string("failed to create UCC context: ") + ucc_status_string(st));
+  std::cout << "CommUCC::CommUCC done" << std::endl;
 }
 
 void CommUCC::progress() { ucc_context_progress(context); }
@@ -424,6 +425,7 @@ CommPG::CommPG(torch_ucc_oob_coll_info_t *oob_info, int dev)
   stop_progress_loop = false;
   progress_thread = std::thread(&CommPG::progress_loop, this);
   pthread_setname_np(progress_thread.native_handle(), "ucc-progress");
+  std::cout << "CommPG::CommPG done" << std::endl;
 }
 
 CommPG::~CommPG() {
@@ -455,6 +457,7 @@ std::shared_ptr<CommPG> CommPG::get_comm(uint32_t &id, int dev,
           "multi device is not supported");
     shared_comm->cuda_device_index = dev;
   }
+  std::cout << "CommPG::get_comm done" << std::endl;
   return shared_comm;
 }
 
@@ -480,8 +483,8 @@ void CommPG::ucx_connect_eps(std::vector<ucp_ep_h> &eps,
     ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
     st = ucp_ep_create(ucx_comm.worker, &ep_params, &(eps[i]));
     check(st == UCS_OK, std::string("failed to create endpoint: ") + ucs_status_string(st));
-    std::cout << "CommPG::ucx_connect_eps done" << std::endl;
   }
+  std::cout << "CommPG::ucx_connect_eps done" << std::endl;
 }
 
 // TODO: remove this?
