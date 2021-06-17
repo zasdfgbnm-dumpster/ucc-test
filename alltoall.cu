@@ -269,7 +269,7 @@ CommUCC::CommUCC(torch_ucc_oob_coll_info_t *oob_info) {
   ucc_context_params_t context_params;
   ucc_status_t st;
 
-  st = ucc_lib_config_read("TORCH", nullptr, &lib_config);
+  st = ucc_lib_config_read(nullptr, nullptr, &lib_config);
   check(st == UCC_OK,
         std::string("failed to read UCC lib config: ") + ucc_status_string(st));
   memset(&lib_params, 0, sizeof(ucc_lib_params_t));
@@ -689,12 +689,12 @@ std::shared_ptr<cudaStream_t> stream =
     nullptr; // TODO, it was unique_ptr in its original code
 event_pool_t ep;
 
-void initProcessGroupUCC(const std::shared_ptr<Store> &store, int rank,
-                         int size) {
+void initProcessGroupUCC() {
   // TODO: should size be world size?
   oob.rank = rank;
-  oob.size = size;
-  oob.store = store;
+  oob.size = world_size;
+  oob.store = std::make_shared<Store>();
+  oob.store->verbose = false;
   comm = nullptr;
   cuda_ee = nullptr;
 }
@@ -748,7 +748,7 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
 }
 
 std::shared_ptr<WorkUCC> alltoall() {
-  initProcessGroupUCC(std::make_shared<Store>(Store{false}), rank, world_size);
+  initProcessGroupUCC();
   initComm(get_device());
 
   // TODO initialize them
