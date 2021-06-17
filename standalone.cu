@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <memory>
 
 #include <ucc/api/ucc.h>
 #include <ucp/api/ucp.h>
@@ -111,7 +112,6 @@ ucc_team_h team;
 
 struct torch_ucc_oob_coll_info_t {
   void *rbuf;
-  size_t msglen;
 };
 
 ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
@@ -123,7 +123,6 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
       reinterpret_cast<char *>(sbuf), reinterpret_cast<char *>(sbuf) + msglen);
   store.set("teamr:" + std::to_string(rank) + "," + std::to_string(message_id++), val);
   info->rbuf = rbuf;
-  info->msglen = msglen;
   std::cout << rank_string() << "[UCC] OOB all gather, msglen: " << msglen << std::endl;
   *req = coll_info;
   return UCC_OK;
@@ -141,21 +140,19 @@ ucc_status_t oob_allgather_test(void *req) {
   }
   for (int r = 0; r < world_size; r++) {
     std::vector<char> data = store.get("teamr:" + std::to_string(r) + "," + std::to_string(message_id));
-    memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
-           info->msglen);
+    int msglen = data.size();
+    memcpy((void *)((ptrdiff_t)info->rbuf + msglen * r), data.data(), msglen);
   }
   message_id++;
   return UCC_OK;
 }
 
 ucc_status_t oob_allgather_free(void *req) {
-  // torch_ucc_oob_coll_info_t *info =
-  //     reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
-  // delete info;
   return UCC_OK;
 }
 
 void create_context() {
+  std::shared_ptr<torch_ucc_oob_coll_info_t> coll_info = std::make_shared<torch_ucc_oob_coll_info_t>();
   ucc_lib_config_h lib_config;
   ucc_context_config_h context_config;
   ucc_lib_params_t lib_params;
@@ -196,7 +193,7 @@ void create_context() {
   context_params.oob.allgather = oob_allgather;
   context_params.oob.req_test = oob_allgather_test;
   context_params.oob.req_free = oob_allgather_free;
-  context_params.oob.coll_info = new torch_ucc_oob_coll_info_t;
+  context_params.oob.coll_info = coll_info.get();
   ucc_context_create(lib, &context_params, context_config, &context);
   ucc_context_config_release(context_config);
   check(st == UCC_OK,
@@ -206,13 +203,14 @@ void create_context() {
 
 void create_team() {
   ucc_status_t st;
+  std::shared_ptr<torch_ucc_oob_coll_info_t> coll_info = std::make_shared<torch_ucc_oob_coll_info_t>();
   ucc_team_params_t team_params;
   team_params.mask = UCC_TEAM_PARAM_FIELD_EP | UCC_TEAM_PARAM_FIELD_EP_RANGE |
                      UCC_TEAM_PARAM_FIELD_OOB;
   team_params.oob.allgather = oob_allgather;
   team_params.oob.req_test = oob_allgather_test;
   team_params.oob.req_free = oob_allgather_free;
-  team_params.oob.coll_info = new torch_ucc_oob_coll_info_t;
+  team_params.oob.coll_info = coll_info.get();
   team_params.oob.participants = world_size;
   team_params.ep = rank;
   team_params.ep_range = UCC_COLLECTIVE_EP_RANGE_CONTIG;
