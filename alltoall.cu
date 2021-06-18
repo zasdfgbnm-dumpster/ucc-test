@@ -476,11 +476,13 @@ void CommPG::ucx_connect_eps(std::vector<ucp_ep_h> &eps,
   oob->store->set(oob->getKey("wa" + std::to_string(oob->rank)), val);
   ucp_worker_release_address(ucx_comm.worker, local_addr);
   eps.resize(oob->size);
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   for (int i = 0; i < oob->size; i++) {
     peer_addr = oob->store->get(oob->getKey("wa" + std::to_string(i)));
     ucp_ep_params_t ep_params;
     ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
     ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
+    std::cout << "creating endpoint " << i << std::endl;
     st = ucp_ep_create(ucx_comm.worker, &ep_params, &(eps[i]));
     check(st == UCS_OK, std::string("failed to create endpoint: ") + ucs_status_string(st));
   }
@@ -697,7 +699,7 @@ void initProcessGroupUCC() {
   oob.rank = rank;
   oob.size = world_size;
   oob.store = std::make_shared<Store>();
-  oob.store->verbose = false;
+  oob.store->verbose = true;
   comm = nullptr;
   cuda_ee = nullptr;
 }
@@ -707,6 +709,7 @@ void initComm(int dev) {
     set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
     comm->ucx_connect_eps(eps, &oob);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     comm->ucc_create_team(team, &oob);
   } else {
     check((comm->cuda_device_index == TORCH_UCC_DEVICE_NOT_SET) ||
@@ -810,7 +813,6 @@ std::shared_ptr<WorkUCC> alltoall() {
   // TODO: enable this
   // data->src = {inputTensor};
   // data->dst = {outputTensor};
-  std::this_thread::sleep_for(std::chrono::seconds(1));
   return collective_post(OpType::ALLTOALL_BASE, coll,
                          std::unique_ptr<WorkData>(data), get_device());
 }

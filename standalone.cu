@@ -235,9 +235,9 @@ int main(int argc, const char *argv[]) {
 
   cudaSetDevice(rank);
 
-  // ucx::create_worker();
-  // ucx::get_self_address();
-  // ucx::create_endpoints();
+  ucx::create_worker();
+  ucx::get_self_address();
+  ucx::create_endpoints();
 
   ucc::create_context();
   ucc::create_team();
