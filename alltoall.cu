@@ -36,66 +36,6 @@ bool isP2POp(OpType) { return true; }
 #define TORCH_UCC_DEVICE_NOT_SET -2
 
 #define TORCH_UCX_COMM_BITS 15
-#define TORCH_UCX_RANK_BITS 16
-#define TORCH_UCX_TAG_BITS 32
-#define TORCH_UCX_OOB_BITS 1
-
-#define TORCH_UCX_COMM_BITS_OFFSET 0
-#define TORCH_UCX_RANK_BITS_OFFSET TORCH_UCX_COMM_BITS
-#define TORCH_UCX_TAG_BITS_OFFSET (TORCH_UCX_COMM_BITS + TORCH_UCX_RANK_BITS)
-#define TORCH_UCX_OOB_BITS_OFFSET                                              \
-  (TORCH_UCX_COMM_BITS + TORCH_UCX_RANK_BITS + TORCH_UCX_TAG_BITS)
-
-#define TORCH_UCX_MAX_COMM ((((uint64_t)1) << TORCH_UCX_COMM_BITS) - 1)
-#define TORCH_UCX_MAX_RANK ((((uint64_t)1) << TORCH_UCX_RANK_BITS) - 1)
-#define TORCH_UCX_MAX_TAG ((((uint64_t)1) << TORCH_UCX_TAG_BITS) - 1)
-#define TORCH_UCX_MAX_OOB ((((uint64_t)1) << TORCH_UCX_OOB_BITS) - 1)
-
-#define TORCH_UCX_COMM_MASK (TORCH_UCX_MAX_COMM << TORCH_UCX_COMM_BITS_OFFSET)
-#define TORCH_UCX_RANK_MASK (TORCH_UCX_MAX_RANK << TORCH_UCX_RANK_BITS_OFFSET)
-#define TORCH_UCX_TAG_MASK (TORCH_UCX_MAX_TAG << TORCH_UCX_TAG_BITS_OFFSET)
-#define TORCH_UCX_OOB_MASK (TORCH_UCX_MAX_OOB << TORCH_UCX_OOB_BITS_OFFSET)
-
-#define TORCH_UCX_MAKE_P2P_TAG(_tag, _rank, _comm)                             \
-  ((((uint64_t)(_tag)) << TORCH_UCX_TAG_BITS_OFFSET) |                         \
-   (((uint64_t)(_rank)) << TORCH_UCX_RANK_BITS_OFFSET) |                       \
-   (((uint64_t)(_comm)) << TORCH_UCX_COMM_BITS_OFFSET))
-
-#define TORCH_UCX_MAKE_OOB_TAG(_tag, _rank, _comm)                             \
-  ((((uint64_t)(_tag)) << TORCH_UCX_OOB_BITS_OFFSET) |                         \
-   (((uint64_t)(_rank)) << TORCH_UCX_RANK_BITS_OFFSET) |                       \
-   (((uint64_t)(_rank)) << TORCH_UCX_COMM_BITS_OFFSET))
-
-#define TORCH_UCX_MAKE_SEND_TAG(_ucp_tag, _tag, _rank, _comm)                  \
-  do {                                                                         \
-    (_ucp_tag) = TORCH_UCX_MAKE_P2P_TAG((_tag), (_rank), (_comm));             \
-  } while (0)
-
-#define TORCH_UCX_ANY_SOURCE (TORCH_UCX_MAX_RANK - 1)
-#define TORCH_UCX_ANY_SOURCE_MASK (~TORCH_UCX_RANK_MASK)
-#define TORCH_UCX_SPECIFIC_SOURCE_MASK ((uint64_t)-1)
-
-#define TORCH_UCX_MAKE_RECV_TAG(_ucp_tag, _ucp_tag_mask, _tag, _rank, _comm)   \
-  do {                                                                         \
-    (_ucp_tag) = TORCH_UCX_MAKE_P2P_TAG((_tag), (_rank), (_comm));             \
-    if ((_rank) == TORCH_UCX_ANY_SOURCE) {                                     \
-      (_ucp_tag_mask) = TORCH_UCX_ANY_SOURCE_MASK;                             \
-    } else {                                                                   \
-      (_ucp_tag_mask) = TORCH_UCX_SPECIFIC_SOURCE_MASK;                        \
-    }                                                                          \
-  } while (0)
-
-#define TORCH_UCX_MAKE_OOB_SEND_TAG(_ucp_tag, _tag, _rank, _comm)              \
-  do {                                                                         \
-    (_ucp_tag) = TORCH_UCX_MAKE_OOB_TAG((_tag), (_rank), (_comm));             \
-  } while (0)
-
-#define TORCH_UCX_MAKE_OOB_RECV_TAG(_ucp_tag, _ucp_tag_mask, _tag, _rank,      \
-                                    _comm)                                     \
-  do {                                                                         \
-    (_ucp_tag) = TORCH_UCX_MAKE_OOB_TAG((_tag), (_rank), (_comm));             \
-    (_ucp_tag_mask) = (uint64_t)-1;                                            \
-  } while (0)
 
 class WorkData {
 public:
@@ -143,59 +83,6 @@ public:
   virtual void progress() = 0;
   virtual ~CommBase() {}
 };
-
-class CommUCX : public CommBase {
-public:
-  ucp_context_h context;
-  ucp_worker_h worker;
-
-public:
-  void progress();
-  CommUCX(int comm_size);
-  ~CommUCX();
-};
-
-CommUCX::CommUCX(int comm_size) {
-  ucp_params_t params;
-  ucp_config_t *config;
-  ucs_status_t st;
-  ucp_worker_params_t worker_params;
-
-  st = ucp_config_read("TORCH", nullptr, &config);
-  check(st == UCS_OK,
-        std::string("failed to read UCP config: ") + ucs_status_string(st));
-  memset(&params, 0, sizeof(ucp_params_t));
-  params.field_mask =
-      UCP_PARAM_FIELD_FEATURES | UCP_PARAM_FIELD_REQUEST_SIZE |
-      UCP_PARAM_FIELD_ESTIMATED_NUM_EPS | UCP_PARAM_FIELD_TAG_SENDER_MASK |
-      UCP_PARAM_FIELD_REQUEST_INIT | UCP_PARAM_FIELD_REQUEST_CLEANUP;
-  params.request_size = sizeof(ucc_coll_req_t);
-  params.features = UCP_FEATURE_TAG;
-  params.estimated_num_eps = comm_size;
-  params.tag_sender_mask = TORCH_UCX_RANK_MASK;
-  params.request_init = [](void *request) {
-    static_cast<ucc_coll_req_h>(request)->status = UCC_INPROGRESS;
-  };
-  params.request_cleanup = [](void *) {};
-  st = ucp_init(&params, config, &context);
-  ucp_config_release(config);
-  check(st == UCS_OK,
-        std::string("failed to init UCP context: ") + ucs_status_string(st));
-  memset(&worker_params, 0, sizeof(ucp_worker_params_t));
-  worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-  worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
-  st = ucp_worker_create(context, &worker_params, &worker);
-  check(st == UCS_OK,
-        std::string("failed to create UCP worker: ") + ucs_status_string(st));
-  ucp_cleanup(context);
-}
-
-void CommUCX::progress() { ucp_worker_progress(worker); }
-
-CommUCX::~CommUCX() {
-  ucp_worker_destroy(worker);
-  ucp_cleanup(context);
-}
 
 class CommUCC : public CommBase {
 public:
@@ -369,7 +256,6 @@ void WorkUCC::finalize() {
 }
 
 class CommPG {
-  CommUCX ucx_comm;
   CommUCC ucc_comm;
   int device_index;
   std::mutex mutex;
@@ -421,7 +307,7 @@ public:
 };
 
 CommPG::CommPG(torch_ucc_oob_coll_info_t *oob_info, int dev)
-    : ucx_comm(oob_info->size), ucc_comm(oob_info), cuda_device_index(dev) {
+    : ucc_comm(oob_info), cuda_device_index(dev) {
   stop_progress_loop = false;
   progress_thread = std::thread(&CommPG::progress_loop, this);
   pthread_setname_np(progress_thread.native_handle(), "ucc-progress");
@@ -461,99 +347,6 @@ std::shared_ptr<CommPG> CommPG::get_comm(uint32_t &id, int dev,
   return shared_comm;
 }
 
-void CommPG::ucx_connect_eps(std::vector<ucp_ep_h> &eps,
-                             torch_ucc_oob_coll_info_t *oob) {
-  ucs_status_t st;
-  ucp_address_t *local_addr;
-  size_t local_addr_len;
-  std::vector<char> peer_addr;
-
-  st = ucp_worker_get_address(ucx_comm.worker, &local_addr, &local_addr_len);
-  check(st == UCS_OK, "failed to get worker address");
-  std::vector<char> val =
-      std::vector<char>(reinterpret_cast<char *>(local_addr),
-                        reinterpret_cast<char *>(local_addr) + local_addr_len);
-  oob->store->set(oob->getKey("wa" + std::to_string(oob->rank)), val);
-  ucp_worker_release_address(ucx_comm.worker, local_addr);
-  eps.resize(oob->size);
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  for (int i = 0; i < oob->size; i++) {
-    peer_addr = oob->store->get(oob->getKey("wa" + std::to_string(i)));
-    ucp_ep_params_t ep_params;
-    ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
-    ep_params.address = reinterpret_cast<ucp_address_t *>(peer_addr.data());
-    std::cout << "creating endpoint " << i << std::endl;
-    st = ucp_ep_create(ucx_comm.worker, &ep_params, &(eps[i]));
-    check(st == UCS_OK, std::string("failed to create endpoint: ") + ucs_status_string(st));
-  }
-  std::cout << "CommPG::ucx_connect_eps done" << std::endl;
-}
-
-// TODO: remove this?
-// void CommPG::ucx_disconnect_eps(std::vector<ucp_ep_h> &eps,
-//                                 torch_ucc_oob_coll_info_t *oob) {
-//   ucs_status_t st;
-
-//   for (ucp_ep_h &ep : eps) {
-//     ucs_status_ptr_t close_req = ucp_ep_close_nb(ep,
-//     UCP_EP_CLOSE_MODE_FLUSH); check(!UCS_PTR_IS_ERR(close_req), "failed to
-//     close endpoint"); if (UCS_PTR_IS_PTR(close_req)) {
-//       do {
-//         ucp_worker_progress(ucx_comm.worker);
-//         st = ucp_request_check_status(close_req);
-//       } while (st != UCS_OK);
-//       ucp_request_free(close_req);
-//     }
-//   }
-//   if ((size_t)oob->store->add(oob->getKey("epclosed"), 1) == eps.size()) {
-//     oob->store->add(oob->getKey("epfinished"), 1);
-//   } else {
-//     oob->store->wait({oob->getKey("epfinished")});
-//   }
-// }
-
-// TODO: can I delete this?
-// ucc_coll_req_h CommPG::send_nb(ucp_ep_h ep, void *data, ucs_memory_type_t
-// mtype,
-//                                size_t size, ucp_tag_t ucp_tag) {
-//   ucs_status_ptr_t st;
-//   ucp_request_param_t params;
-//   params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
-//                         UCP_OP_ATTR_FIELD_DATATYPE |
-//                         UCP_OP_ATTR_FIELD_MEMORY_TYPE;
-//   params.datatype = ucp_dt_make_contig(size);
-//   params.memory_type = mtype;
-//   params.cb.send = [](void *request, ucs_status_t status, void *user_data) {
-//     static_cast<ucc_coll_req_h>(request)->status = UCC_OK;
-//   };
-//   st = ucp_tag_send_nbx(ep, data, 1, ucp_tag, &params);
-//   check(!UCS_PTR_IS_ERR(st), std::string("failed to send message: ") +
-//                                  ucs_status_string(UCS_PTR_STATUS(st)));
-//   return reinterpret_cast<ucc_coll_req_h>(st);
-// }
-
-// TODO: can I delete this?
-// ucc_coll_req_h CommPG::recv_nb(void *data, ucs_memory_type_t mtype, size_t
-// size,
-//                                ucp_tag_t ucp_tag, ucp_tag_t ucp_tag_mask) {
-//   ucs_status_ptr_t st;
-//   ucp_request_param_t params;
-//   params.op_attr_mask = UCP_OP_ATTR_FIELD_CALLBACK |
-//                         UCP_OP_ATTR_FIELD_DATATYPE |
-//                         UCP_OP_ATTR_FIELD_MEMORY_TYPE;
-//   params.datatype = ucp_dt_make_contig(size);
-//   params.cb.recv = [](void *request, ucs_status_t status,
-//                       const ucp_tag_recv_info_t *info, void *user_data) {
-//     static_cast<ucc_coll_req_h>(request)->status = UCC_OK;
-//   };
-//   params.memory_type = mtype;
-//   st = ucp_tag_recv_nbx(ucx_comm.worker, data, 1, ucp_tag, ucp_tag_mask,
-//                         &params);
-//   check(!UCS_PTR_IS_ERR(st), std::string("failed to recv message: ") +
-//                                  ucs_status_string(UCS_PTR_STATUS(st)));
-//   return reinterpret_cast<ucc_coll_req_h>(st);
-// }
-
 void CommPG::ucc_create_team(ucc_team_h &team,
                              torch_ucc_oob_coll_info_t *oob_info) {
   ucc_status_t st;
@@ -585,22 +378,6 @@ void CommPG::ucc_destroy_team(ucc_team_h &team) {
     check(status == UCC_OK,
           std::string("ucc team destroy error: ") + ucc_status_string(status));
   }
-}
-
-std::shared_ptr<WorkUCC> CommPG::enqueue_p2p(OpType opType,
-                                             ucc_coll_req_h request) {
-  if (request == nullptr) {
-    // p2p2 request completed immediately don't save it to progress queue
-    return std::make_shared<WorkUCC>(opType, UCC_OK, request, nullptr,
-                                     &ucx_comm);
-  }
-  auto work = std::make_shared<WorkUCC>(opType, UCC_INPROGRESS, request,
-                                        nullptr, &ucx_comm);
-  std::unique_lock<std::mutex> lock(mutex);
-  progress_queue.push_back(work);
-  lock.unlock();
-  queue_produce_cv.notify_one();
-  return work;
 }
 
 std::shared_ptr<WorkUCC>
@@ -708,7 +485,6 @@ void initComm(int dev) {
   if (!comm) {
     set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
-    comm->ucx_connect_eps(eps, &oob);
     std::this_thread::sleep_for(std::chrono::seconds(1));
     comm->ucc_create_team(team, &oob);
   } else {
