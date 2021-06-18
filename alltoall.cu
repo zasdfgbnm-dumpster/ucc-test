@@ -480,7 +480,7 @@ void initProcessGroupUCC() {
   oob.rank = rank;
   oob.size = world_size;
   oob.store = std::make_shared<Store>();
-  oob.store->verbose = true;
+  oob.store->verbose = false;
   comm = nullptr;
   cuda_ee = nullptr;
 }
@@ -489,7 +489,6 @@ void initComm(int dev) {
   if (!comm) {
     set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
     comm->ucc_create_team(team, &oob);
   } else {
     check((comm->cuda_device_index == TORCH_UCC_DEVICE_NOT_SET) ||
@@ -509,6 +508,7 @@ void initComm(int dev) {
     check(st == UCC_OK,
           std::string("failed to create UCC EE: ") + ucc_status_string(st));
   }
+  std::cout << "initComm done" << std::endl;
 }
 
 std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
