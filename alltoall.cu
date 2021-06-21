@@ -478,8 +478,7 @@ uint32_t comm_id;
 std::vector<ucp_ep_h> eps;
 ucc_team_h team;
 ucc_ee_h cuda_ee;
-std::shared_ptr<cudaStream_t> stream =
-    nullptr; // TODO, it was unique_ptr in its original code
+std::shared_ptr<cudaStream_t> stream = nullptr;
 event_pool_t ep;
 
 void initProcessGroupUCC() {
@@ -490,6 +489,7 @@ void initProcessGroupUCC() {
   oob.store->verbose = false;
   comm = nullptr;
   cuda_ee = nullptr;
+  stream = std::make_shared<cudaStream_t>(getStreamFromPool());
 }
 
 void initComm(int dev) {
