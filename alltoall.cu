@@ -35,10 +35,6 @@ cudaStream_t getCurrentCUDAStream();
 
 void set_device(int i);
 
-enum OpType { ALLTOALL_BASE };
-
-bool isP2POp(OpType) { return false; }
-
 #define TORCH_UCC_DEVICE_NOT_SET -2
 
 #define TORCH_UCX_COMM_BITS 15
@@ -215,13 +211,12 @@ struct event_pool_t {
 };
 
 class WorkUCC {
-  OpType opType;
   friend class CommPG;
 
 public:
-  WorkUCC(OpType opType, ucc_status_t status, ucc_coll_req_h request,
-          ucc_ee_h ee, CommBase *comm)
-      : opType(opType), status_(status), request_(request), comm_(comm) {}
+  WorkUCC(ucc_status_t status, ucc_coll_req_h request, ucc_ee_h ee,
+          CommBase *comm)
+      : status_(status), request_(request), comm_(comm) {}
   ~WorkUCC();
   bool isCompleted();
   bool isSuccess() const;
@@ -238,6 +233,7 @@ protected:
 };
 
 WorkUCC::~WorkUCC() {
+  std::cout << "WorkUCC::~WorkUCC" << std::endl;
   check(request_ == nullptr, "TorchUCC, request wasn't finalized");
   if (fence && ep) {
     std::lock_guard<std::mutex> lock(ep->event_pool_mutex);
@@ -247,12 +243,7 @@ WorkUCC::~WorkUCC() {
 
 void WorkUCC::finalize() {
   if (request_ != nullptr) {
-    if (isP2POp(opType)) {
-      request_->status = UCC_INPROGRESS;
-      ucp_request_free(request_);
-    } else {
-      ucc_collective_finalize(request_);
-    }
+    ucc_collective_finalize(request_);
     status_ = UCC_OK;
     request_ = nullptr;
   }
@@ -284,16 +275,15 @@ public:
 
   void ucc_destroy_team(ucc_team_h &team);
 
-  std::shared_ptr<WorkUCC> enqueue_p2p(OpType opType, ucc_coll_req_h request);
+  std::shared_ptr<WorkUCC> enqueue_p2p(ucc_coll_req_h request);
 
   std::shared_ptr<WorkUCC>
-  enqueue_cuda_collective(OpType opType, ucc_coll_args_t &coll,
-                          std::unique_ptr<WorkData> data, ucc_team_h &team,
-                          ucc_ee_h ee, std::unique_ptr<cudaEvent_t> cuda_ev,
+  enqueue_cuda_collective(ucc_coll_args_t &coll, std::unique_ptr<WorkData> data,
+                          ucc_team_h &team, ucc_ee_h ee,
+                          std::unique_ptr<cudaEvent_t> cuda_ev,
                           const cudaStream_t &stream, event_pool_t *ep);
 
-  std::shared_ptr<WorkUCC> enqueue_collective(OpType opType,
-                                              ucc_coll_args_t &coll,
+  std::shared_ptr<WorkUCC> enqueue_collective(ucc_coll_args_t &coll,
                                               std::unique_ptr<WorkData> data,
                                               ucc_team_h &team);
 
@@ -378,7 +368,7 @@ void CommPG::ucc_destroy_team(ucc_team_h &team) {
 }
 
 std::shared_ptr<WorkUCC>
-CommPG::enqueue_collective(OpType opType, ucc_coll_args_t &coll,
+CommPG::enqueue_collective(ucc_coll_args_t &coll,
                            std::unique_ptr<WorkData> data, ucc_team_h &team) {
   ucc_coll_req_h request;
   ucc_status_t st;
@@ -388,8 +378,8 @@ CommPG::enqueue_collective(OpType opType, ucc_coll_args_t &coll,
   st = ucc_collective_post(request);
   check(st == UCC_OK,
         std::string("failed to post collective: ") + ucc_status_string(st));
-  auto work = std::make_shared<WorkUCC>(opType, UCC_INPROGRESS, request,
-                                        nullptr, &ucc_comm);
+  auto work =
+      std::make_shared<WorkUCC>(UCC_INPROGRESS, request, nullptr, &ucc_comm);
   work->data = std::move(data);
   std::unique_lock<std::mutex> lock(mutex);
   progress_queue.push_back(work);
@@ -399,8 +389,8 @@ CommPG::enqueue_collective(OpType opType, ucc_coll_args_t &coll,
 }
 
 std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
-    OpType opType, ucc_coll_args_t &coll, std::unique_ptr<WorkData> data,
-    ucc_team_h &team, ucc_ee_h ee, std::unique_ptr<cudaEvent_t> cuda_ev,
+    ucc_coll_args_t &coll, std::unique_ptr<WorkData> data, ucc_team_h &team,
+    ucc_ee_h ee, std::unique_ptr<cudaEvent_t> cuda_ev,
     const cudaStream_t &stream, event_pool_t *ep) {
   ucc_coll_req_h request;
   ucc_status_t st;
@@ -424,8 +414,7 @@ std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
   ucc_ee_ack_event(ee, post_ev);
   check(st == UCC_OK, "Bug???");
   std::cout << "ucc_ee_ack_event succeed." << std::endl;
-  auto work =
-      std::make_shared<WorkUCC>(opType, UCC_INPROGRESS, request, ee, &ucc_comm);
+  auto work = std::make_shared<WorkUCC>(UCC_INPROGRESS, request, ee, &ucc_comm);
   work->data = std::move(data);
   work->ep = ep;
   check_cuda(cudaEventRecord(*cuda_ev, stream));
@@ -508,7 +497,7 @@ void initComm(int dev) {
   std::cout << "initComm done" << std::endl;
 }
 
-std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
+std::shared_ptr<WorkUCC> collective_post(ucc_coll_args_t &coll,
                                          std::unique_ptr<WorkData> data,
                                          int dev) {
   std::unique_ptr<cudaEvent_t> cuda_ev;
@@ -526,9 +515,8 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
   check_cuda(cudaEventRecord(*cuda_ev, current_stream));
   check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
   std::cout << "Will enqueue_cuda_collective now..." << std::endl;
-  auto work =
-      comm->enqueue_cuda_collective(opType, coll, std::move(data), team,
-                                    cuda_ee, std::move(cuda_ev), *stream, &ep);
+  auto work = comm->enqueue_cuda_collective(
+      coll, std::move(data), team, cuda_ee, std::move(cuda_ev), *stream, &ep);
   return work;
 }
 
@@ -570,8 +558,7 @@ void alltoall() {
   data->src = {input};
   data->dst = {output};
   std::cout << "Will do collective_post now..." << std::endl;
-  collective_post(OpType::ALLTOALL_BASE, coll, std::unique_ptr<WorkData>(data),
-                  get_device());
+  collective_post(coll, std::unique_ptr<WorkData>(data), get_device());
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 }
