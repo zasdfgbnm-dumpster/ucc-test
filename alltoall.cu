@@ -1,5 +1,7 @@
+#include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -7,8 +9,6 @@
 #include <queue>
 #include <string>
 #include <thread>
-#include <chrono>
-#include <filesystem>
 
 #include <ucc/api/ucc.h>
 #include <ucp/api/ucp.h>
@@ -41,9 +41,8 @@ bool isP2POp(OpType) { return true; }
 
 class WorkData {
 public:
-  // TODO enable this
-  // std::vector<at::Tensor> src;
-  // std::vector<at::Tensor> dst;
+  std::vector<T *> src;
+  std::vector<T *> dst;
   WorkData() {}
   virtual ~WorkData() = default;
 };
@@ -102,11 +101,13 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
   static int index = 0;
   torch_ucc_oob_coll_info_t *info =
       reinterpret_cast<torch_ucc_oob_coll_info_t *>(coll_info);
-  std::vector<char> val =
-      std::vector<char>(reinterpret_cast<char *>(sbuf),
-                           reinterpret_cast<char *>(sbuf) + msglen);
-  info->store->set(info->getKey("teamr" + std::to_string(info->rank)) + std::to_string(index), val);
-  std::cout << "All gather: " << info->getKey("teamr" + std::to_string(info->rank)) << std::endl;
+  std::vector<char> val = std::vector<char>(
+      reinterpret_cast<char *>(sbuf), reinterpret_cast<char *>(sbuf) + msglen);
+  info->store->set(info->getKey("teamr" + std::to_string(info->rank)) +
+                       std::to_string(index),
+                   val);
+  std::cout << "All gather: "
+            << info->getKey("teamr" + std::to_string(info->rank)) << std::endl;
   info->rbuf = rbuf;
   info->msglen = msglen;
   *req = coll_info;
@@ -120,13 +121,14 @@ ucc_status_t oob_allgather_test(void *req) {
       reinterpret_cast<torch_ucc_oob_coll_info_t *>(req);
 
   for (int r = 0; r < info->size; r++) {
-    if (!info->store->check({info->getKey("teamr" + std::to_string(r)) + std::to_string(index)})) {
+    if (!info->store->check({info->getKey("teamr" + std::to_string(r)) +
+                             std::to_string(index)})) {
       return UCC_INPROGRESS;
     }
   }
   for (int r = 0; r < info->size; r++) {
-    std::vector<char> data =
-        info->store->get(info->getKey("teamr" + std::to_string(r)) + std::to_string(index));
+    std::vector<char> data = info->store->get(
+        info->getKey("teamr" + std::to_string(r)) + std::to_string(index));
     memcpy((void *)((ptrdiff_t)info->rbuf + info->msglen * r), data.data(),
            info->msglen);
   }
@@ -535,66 +537,43 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
   return work;
 }
 
+void computeLengthsAndOffsets(std::vector<uint32_t> *lengths,
+                              std::vector<uint32_t> *offsets) {
+  for (int i = 0; i < world_size; i++) {
+    lengths->push_back(N);
+    offsets->push_back(N * i);
+  }
+}
+
 std::shared_ptr<WorkUCC> alltoall() {
   initProcessGroupUCC();
   initComm(get_device());
 
-  // TODO initialize them
-  std::vector<int64_t> outputSplitSizes;
-  std::vector<int64_t> inputSplitSizes;
   ucc_coll_args_t coll;
-  AlltoallWorkData *data;
 
-  if ((outputSplitSizes.size() == 0) && (inputSplitSizes.size() == 0)) {
-    data = new AlltoallWorkData(0);
-    // TODO: migrate this
-    // TORCH_CHECK((outputTensor.size(0) % size_ == 0) &&
-    //                 (inputTensor.size(0) % size_ == 0),
-    //             "Tensor's dim 0 does not divide equally across group size");
-    coll.mask = 0;
-    coll.coll_type = UCC_COLL_TYPE_ALLTOALL;
-    // TODO: enable this
-    // coll.src.info.buffer = inputTensor.data_ptr();
-    // coll.src.info.count =
-    //     inputTensor.element_size() * inputTensor.numel() / size_;
-    coll.src.info.datatype = UCC_DT_UINT8;
-    coll.src.info.mem_type = UCC_MEMORY_TYPE_CUDA;
-    // TODO: enable this
-    // coll.dst.info.buffer = outputTensor.data_ptr();
-    // coll.dst.info.count =
-    //     outputTensor.element_size() * outputTensor.numel() / size_;
-    coll.dst.info.datatype = UCC_DT_UINT8;
-    coll.dst.info.mem_type = UCC_MEMORY_TYPE_CUDA;
-  } else {
-    data = new AlltoallWorkData(N);
-    // TODO: migrate this
-    // c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
-    // c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
-    // computeLengthsAndOffsets(outputSplitSizes, outputTensor,
-    //                          &data->recv_lengths, &data->recv_offsets);
-    // computeLengthsAndOffsets(inputSplitSizes, inputTensor,
-    // &data->send_lengths,
-    //                          &data->send_offsets);
-    coll.mask = UCC_COLL_ARGS_FIELD_FLAGS;
-    coll.coll_type = UCC_COLL_TYPE_ALLTOALLV;
-    // TODO: enable this
-    // coll.src.info_v.buffer = inputTensor.data_ptr();
-    coll.src.info_v.counts = (ucc_count_t *)data->send_lengths.data();
-    coll.src.info_v.displacements = (ucc_aint_t *)data->send_offsets.data();
-    coll.src.info_v.datatype = dtype;
-    coll.src.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
-    // TODO: enable this
-    // coll.dst.info_v.buffer = outputTensor.data_ptr();
-    coll.dst.info_v.counts = (ucc_count_t *)data->recv_lengths.data();
-    coll.dst.info_v.displacements = (ucc_aint_t *)data->recv_offsets.data();
-    coll.dst.info_v.datatype = dtype;
-    coll.dst.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
-    coll.flags = UCC_COLL_ARGS_FLAG_CONTIG_SRC_BUFFER |
-                 UCC_COLL_ARGS_FLAG_CONTIG_DST_BUFFER;
-  }
-  // TODO: enable this
-  // data->src = {inputTensor};
-  // data->dst = {outputTensor};
+  AlltoallWorkData *data = new AlltoallWorkData(N);
+  computeLengthsAndOffsets(&data->recv_lengths, &data->recv_offsets);
+  computeLengthsAndOffsets(&data->send_lengths, &data->send_offsets);
+
+  coll.mask = UCC_COLL_ARGS_FIELD_FLAGS;
+  coll.coll_type = UCC_COLL_TYPE_ALLTOALLV;
+
+  coll.src.info_v.buffer = input;
+  coll.src.info_v.counts = (ucc_count_t *)data->send_lengths.data();
+  coll.src.info_v.displacements = (ucc_aint_t *)data->send_offsets.data();
+  coll.src.info_v.datatype = dtype;
+  coll.src.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
+
+  coll.dst.info_v.buffer = output;
+  coll.dst.info_v.counts = (ucc_count_t *)data->recv_lengths.data();
+  coll.dst.info_v.displacements = (ucc_aint_t *)data->recv_offsets.data();
+  coll.dst.info_v.datatype = dtype;
+  coll.dst.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
+  coll.flags = UCC_COLL_ARGS_FLAG_CONTIG_SRC_BUFFER |
+               UCC_COLL_ARGS_FLAG_CONTIG_DST_BUFFER;
+
+  data->src = {input};
+  data->dst = {output};
   return collective_post(OpType::ALLTOALL_BASE, coll,
                          std::unique_ptr<WorkData>(data), get_device());
 }
