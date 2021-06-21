@@ -549,7 +549,7 @@ void computeLengthsAndOffsets(std::vector<uint32_t> *lengths,
   }
 }
 
-std::shared_ptr<WorkUCC> alltoall() {
+void alltoall() {
   initProcessGroupUCC();
   initComm(get_device());
 
@@ -579,6 +579,6 @@ std::shared_ptr<WorkUCC> alltoall() {
   data->src = {input};
   data->dst = {output};
   std::cout << "Will do collective_post now..." << std::endl;
-  return collective_post(OpType::ALLTOALL_BASE, coll,
-                         std::unique_ptr<WorkData>(data), get_device());
+  collective_post(OpType::ALLTOALL_BASE, coll, std::unique_ptr<WorkData>(data),
+                  get_device());
 }
