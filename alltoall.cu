@@ -416,6 +416,7 @@ std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
   st = ucc_collective_init(&coll, &request, team);
   check(st == UCC_OK,
         std::string("failed to init collective: ") + ucc_status_string(st));
+  std::cout << "ucc_collective_init succeed." << std::endl;
   ucc_ev_t comp_ev, *post_ev;
   comp_ev.ev_type = UCC_EVENT_COMPUTE_COMPLETE;
   comp_ev.ev_context = nullptr;
@@ -424,10 +425,14 @@ std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
   st = ucc_collective_triggered_post(ee, &comp_ev);
   check(st == UCC_OK, std::string("failed to post triggered collective: ") +
                           ucc_status_string(st));
+  std::cout << "ucc_collective_triggered_post succeed." << std::endl;
   st = ucc_ee_get_event(ee, &post_ev);
   check(st == UCC_OK && post_ev->ev_type == UCC_EVENT_COLLECTIVE_POST,
         "Bug???");
+  std::cout << "ucc_ee_get_event succeed." << std::endl;
   ucc_ee_ack_event(ee, post_ev);
+  check(st == UCC_OK, "Bug???");
+  std::cout << "ucc_ee_ack_event succeed." << std::endl;
   auto work =
       std::make_shared<WorkUCC>(opType, UCC_INPROGRESS, request, ee, &ucc_comm);
   work->data = std::move(data);
@@ -515,7 +520,6 @@ void initComm(int dev) {
 std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
                                          std::unique_ptr<WorkData> data,
                                          int dev) {
-  std::cout << "Begin of collective_post." << std::endl;
   std::unique_ptr<cudaEvent_t> cuda_ev;
   {
     std::lock_guard<std::mutex> lock(ep.event_pool_mutex);
@@ -527,7 +531,6 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
       ep.event_pool.pop();
     }
   }
-  std::cout << "Event added." << std::endl;
   auto current_stream = getCurrentCUDAStream();
   check_cuda(cudaEventRecord(*cuda_ev, current_stream));
   check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
