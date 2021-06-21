@@ -37,7 +37,7 @@ void set_device(int i);
 
 enum OpType { ALLTOALL_BASE };
 
-bool isP2POp(OpType) { return true; }
+bool isP2POp(OpType) { return false; }
 
 #define TORCH_UCC_DEVICE_NOT_SET -2
 
@@ -443,6 +443,7 @@ std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
   progress_queue.push_back(work);
   lock.unlock();
   queue_produce_cv.notify_one();
+  std::cout << "enqueue_cuda_collective succeed." << std::endl;
   return work;
 }
 
