@@ -221,10 +221,7 @@ class WorkUCC {
 public:
   WorkUCC(OpType opType, ucc_status_t status, ucc_coll_req_h request,
           ucc_ee_h ee, CommBase *comm)
-      : opType(opType), status_(status), request_(request), comm_(comm) {
-    fence = std::make_unique<cudaEvent_t>();
-    check_cuda(cudaEventCreate(fence.get()));
-  }
+      : opType(opType), status_(status), request_(request), comm_(comm) {}
   ~WorkUCC();
   bool isCompleted();
   bool isSuccess() const;
