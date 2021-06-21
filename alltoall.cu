@@ -489,7 +489,6 @@ void initProcessGroupUCC() {
   oob.store->verbose = false;
   comm = nullptr;
   cuda_ee = nullptr;
-  stream = std::make_shared<cudaStream_t>(getStreamFromPool());
 }
 
 void initComm(int dev) {
