@@ -559,6 +559,4 @@ void alltoall() {
   data->dst = {output};
   std::cout << "Will do collective_post now..." << std::endl;
   collective_post(coll, std::unique_ptr<WorkData>(data), get_device());
-
-  std::this_thread::sleep_for(std::chrono::seconds(1));
 }

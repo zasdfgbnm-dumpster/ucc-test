@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <random>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 
 #include "utils.hpp"
 
@@ -101,6 +103,7 @@ int main(int argc, char *argv[]) {
   alltoall();
   cudaDeviceSynchronize();
 
+  std::this_thread::sleep_for(std::chrono::seconds(rank));
   std::cout << std::endl << "After alltoall, buffers are:" << std::endl;
   print_buffer(output);
 }
