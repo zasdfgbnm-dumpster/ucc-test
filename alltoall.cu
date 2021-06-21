@@ -56,10 +56,10 @@ public:
   AlltoallWorkData(int size)
       : send_lengths(size), send_offsets(size), recv_lengths(size),
         recv_offsets(size) {}
-  std::vector<uint32_t> send_lengths;
-  std::vector<uint32_t> send_offsets;
-  std::vector<uint32_t> recv_lengths;
-  std::vector<uint32_t> recv_offsets;
+  std::vector<ucc_count_t> send_lengths;
+  std::vector<ucc_aint_t> send_offsets;
+  std::vector<ucc_count_t> recv_lengths;
+  std::vector<ucc_aint_t> recv_offsets;
 };
 
 struct torch_ucc_oob_coll_info_t {
@@ -541,8 +541,8 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
   return work;
 }
 
-void computeLengthsAndOffsets(std::vector<uint32_t> *lengths,
-                              std::vector<uint32_t> *offsets) {
+void computeLengthsAndOffsets(std::vector<ucc_count_t> *lengths,
+                              std::vector<ucc_aint_t> *offsets) {
   for (int i = 0; i < world_size; i++) {
     lengths->push_back(N);
     offsets->push_back(N * i);
@@ -563,14 +563,14 @@ void alltoall() {
   coll.coll_type = UCC_COLL_TYPE_ALLTOALLV;
 
   coll.src.info_v.buffer = input;
-  coll.src.info_v.counts = (ucc_count_t *)data->send_lengths.data();
-  coll.src.info_v.displacements = (ucc_aint_t *)data->send_offsets.data();
+  coll.src.info_v.counts = data->send_lengths.data();
+  coll.src.info_v.displacements = data->send_offsets.data();
   coll.src.info_v.datatype = dtype;
   coll.src.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
 
   coll.dst.info_v.buffer = output;
-  coll.dst.info_v.counts = (ucc_count_t *)data->recv_lengths.data();
-  coll.dst.info_v.displacements = (ucc_aint_t *)data->recv_offsets.data();
+  coll.dst.info_v.counts = data->recv_lengths.data();
+  coll.dst.info_v.displacements = data->recv_offsets.data();
   coll.dst.info_v.datatype = dtype;
   coll.dst.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
   coll.flags = UCC_COLL_ARGS_FLAG_CONTIG_SRC_BUFFER |
