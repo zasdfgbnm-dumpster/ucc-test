@@ -101,7 +101,8 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
                        std::to_string(index),
                    val);
   // std::cout << "All gather: "
-  //           << info->getKey("teamr" + std::to_string(info->rank)) << std::endl;
+  //           << info->getKey("teamr" + std::to_string(info->rank)) <<
+  //           std::endl;
   info->rbuf = rbuf;
   info->msglen = msglen;
   *req = coll_info;
@@ -220,7 +221,10 @@ class WorkUCC {
 public:
   WorkUCC(OpType opType, ucc_status_t status, ucc_coll_req_h request,
           ucc_ee_h ee, CommBase *comm)
-      : opType(opType), status_(status), request_(request), comm_(comm) {}
+      : opType(opType), status_(status), request_(request), comm_(comm) {
+    fence = std::make_unique<cudaEvent_t>();
+    check_cuda(cudaEventCreate(fence.get()));
+  }
   ~WorkUCC();
   bool isCompleted();
   bool isSuccess() const;
@@ -517,6 +521,7 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
     std::lock_guard<std::mutex> lock(ep.event_pool_mutex);
     if (ep.event_pool.empty()) {
       cuda_ev = std::make_unique<cudaEvent_t>();
+      check_cuda(cudaEventCreate(cuda_ev.get()));
     } else {
       cuda_ev = std::move(ep.event_pool.front());
       ep.event_pool.pop();
