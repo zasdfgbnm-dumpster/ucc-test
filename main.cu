@@ -62,7 +62,7 @@ void initialize_input() {
 
   for (int i = 0; i < world_size; i++) {
     for (int j = 0; j < N; j++) {
-      T value = (i == rank ? d(gen): 0);
+      T value = d(gen);
       write_value<<<1, 1, 0, getCurrentCUDAStream()>>>(input + N * i + j, value);
     }
   }
