@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
 
   allocate_buffers();
   initialize_input();
+
+  std::this_thread::sleep_for(std::chrono::seconds(rank));
   std::cout << std::endl << "Buffers initialized as:" << std::endl;
   print_buffer(input);
 
