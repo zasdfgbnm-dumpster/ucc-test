@@ -507,7 +507,7 @@ void initComm(int dev) {
     stream = std::make_shared<cudaStream_t>(getStreamFromPool());
     ucc_ee_params_t params;
     params.ee_type = UCC_EE_CUDA_STREAM;
-    params.ee_context = (void *)stream.get();
+    params.ee_context = (void *)(*stream);
     params.ee_context_size = sizeof(cudaStream_t);
     st = ucc_ee_create(team, &params, &cuda_ee);
     check(st == UCC_OK,
