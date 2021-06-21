@@ -74,6 +74,7 @@ void print_buffer(T *ptr) {
   for (int i = 0; i < world_size; i++) {
     T *host = new T[N];
     check_cuda(cudaMemcpyAsync(host, ptr + N * i, sizeof(T) * N, cudaMemcpyDefault, getCurrentCUDAStream()));
+    cudaStreamSynchronize(getCurrentCUDAStream());
     for (int j = 0; j < N; j++) {
       std::cout << host[j] << ", ";
     }
@@ -98,6 +99,7 @@ int main(int argc, char *argv[]) {
   print_buffer(input);
 
   alltoall();
+  cudaDeviceSynchronize();
 
   std::cout << std::endl << "After alltoall, buffers are:" << std::endl;
   print_buffer(output);
