@@ -12,6 +12,17 @@ using T = int;
 int world_size;
 int rank;
 
+cudaStream_t getStreamFromPool() {
+  cudaStream_t stream;
+  cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+  return stream;
+}
+
+cudaStream_t getCurrentCUDAStream() {
+  static cudaStream_t stream = getStreamFromPool();
+  return stream;
+}
+
 void check_cuda(cudaError_t err) {
   check(err == cudaSuccess, cudaGetErrorString(err));
 }
@@ -52,17 +63,17 @@ void initialize_input() {
   for (int i = 0; i < world_size; i++) {
     for (int j = 0; j < N; j++) {
       T value = (i == rank ? d(gen): 0);
-      write_value<<<1, 1>>>(input + N * i + j, value);
+      write_value<<<1, 1, 0, getCurrentCUDAStream()>>>(input + N * i + j, value);
     }
   }
 }
 
 template<typename T>
 void print_buffer(T *ptr) {
-  cudaDeviceSynchronize();
+  cudaStreamSynchronize(getCurrentCUDAStream());
   for (int i = 0; i < world_size; i++) {
     T *host = new T[N];
-    check_cuda(cudaMemcpy(host, ptr + N * i, sizeof(T) * N, cudaMemcpyDefault));
+    check_cuda(cudaMemcpyAsync(host, ptr + N * i, sizeof(T) * N, cudaMemcpyDefault, getCurrentCUDAStream()));
     for (int j = 0; j < N; j++) {
       std::cout << host[j] << ", ";
     }

@@ -27,9 +27,13 @@ extern T *output;
 
 void check_cuda(cudaError_t);
 int get_device();
-void set_device(int i);
 
 constexpr auto kUnsetTimeout = std::chrono::milliseconds(-1);
+
+cudaStream_t getStreamFromPool();
+cudaStream_t getCurrentCUDAStream();
+
+void set_device(int i);
 
 enum OpType { ALLTOALL_BASE };
 
@@ -57,16 +61,6 @@ public:
   std::vector<uint32_t> recv_lengths;
   std::vector<uint32_t> recv_offsets;
 };
-
-cudaStream_t getStreamFromPool(int dev) {
-  // TODO
-  return 0;
-}
-
-cudaStream_t getCurrentCUDAStream(int dev) {
-  // TODO
-  return 0;
-}
 
 struct torch_ucc_oob_coll_info_t {
   std::shared_ptr<Store> store;
@@ -106,8 +100,8 @@ ucc_status_t oob_allgather(void *sbuf, void *rbuf, size_t msglen,
   info->store->set(info->getKey("teamr" + std::to_string(info->rank)) +
                        std::to_string(index),
                    val);
-  std::cout << "All gather: "
-            << info->getKey("teamr" + std::to_string(info->rank)) << std::endl;
+  // std::cout << "All gather: "
+  //           << info->getKey("teamr" + std::to_string(info->rank)) << std::endl;
   info->rbuf = rbuf;
   info->msglen = msglen;
   *req = coll_info;
@@ -491,7 +485,6 @@ void initProcessGroupUCC() {
 
 void initComm(int dev) {
   if (!comm) {
-    set_device(dev);
     comm = CommPG::get_comm(comm_id, dev, &oob);
     comm->ucc_create_team(team, &oob);
   } else {
@@ -503,7 +496,7 @@ void initComm(int dev) {
   }
   if (!cuda_ee) {
     ucc_status_t st;
-    stream = std::make_shared<cudaStream_t>(getStreamFromPool(dev));
+    stream = std::make_shared<cudaStream_t>(getStreamFromPool());
     ucc_ee_params_t params;
     params.ee_type = UCC_EE_CUDA_STREAM;
     params.ee_context = (void *)stream.get();
@@ -518,6 +511,7 @@ void initComm(int dev) {
 std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
                                          std::unique_ptr<WorkData> data,
                                          int dev) {
+  std::cout << "Begin of collective_post." << std::endl;
   std::unique_ptr<cudaEvent_t> cuda_ev;
   {
     std::lock_guard<std::mutex> lock(ep.event_pool_mutex);
@@ -528,9 +522,11 @@ std::shared_ptr<WorkUCC> collective_post(OpType opType, ucc_coll_args_t &coll,
       ep.event_pool.pop();
     }
   }
-  auto current_stream = getCurrentCUDAStream(dev);
+  std::cout << "Event added." << std::endl;
+  auto current_stream = getCurrentCUDAStream();
   check_cuda(cudaEventRecord(*cuda_ev, current_stream));
   check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
+  std::cout << "Will enqueue_cuda_collective now..." << std::endl;
   auto work =
       comm->enqueue_cuda_collective(opType, coll, std::move(data), team,
                                     cuda_ee, std::move(cuda_ev), *stream, &ep);
@@ -574,6 +570,7 @@ std::shared_ptr<WorkUCC> alltoall() {
 
   data->src = {input};
   data->dst = {output};
+  std::cout << "Will do collective_post now..." << std::endl;
   return collective_post(OpType::ALLTOALL_BASE, coll,
                          std::unique_ptr<WorkData>(data), get_device());
 }
