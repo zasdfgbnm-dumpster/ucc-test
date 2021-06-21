@@ -12,17 +12,6 @@ using T = int;
 int world_size;
 int rank;
 
-cudaStream_t getStreamFromPool() {
-  cudaStream_t stream;
-  cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-  return stream;
-}
-
-cudaStream_t getCurrentCUDAStream() {
-  static cudaStream_t stream = getStreamFromPool();
-  return stream;
-}
-
 void check_cuda(cudaError_t err) {
   check(err == cudaSuccess, cudaGetErrorString(err));
 }
@@ -41,6 +30,17 @@ void set_device() {
 
 void set_device(int i) {
   check_cuda(cudaSetDevice(i));
+}
+
+cudaStream_t getStreamFromPool() {
+  cudaStream_t stream;
+  check_cuda(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  return stream;
+}
+
+cudaStream_t getCurrentCUDAStream() {
+  static cudaStream_t stream = getStreamFromPool();
+  return stream;
 }
 
 T *input;
