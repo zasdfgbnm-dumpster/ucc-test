@@ -301,12 +301,6 @@ public:
                                           torch_ucc_oob_coll_info_t *oob);
 
   void progress_loop();
-
-  ucc_coll_req_h send_nb(ucp_ep_h ep, void *data, ucs_memory_type_t mtype,
-                         size_t size, ucp_tag_t ucp_tag);
-
-  ucc_coll_req_h recv_nb(void *data, ucs_memory_type_t mtype, size_t size,
-                         ucp_tag_t ucp_tag, ucp_tag_t ucp_tag_mask);
 };
 
 CommPG::CommPG(torch_ucc_oob_coll_info_t *oob_info, int dev)
