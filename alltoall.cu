@@ -18,10 +18,12 @@
 using T = int;
 ucc_datatype_t dtype = UCC_DT_FLOAT32;
 
-extern const int N;
+extern int N;
 extern int world_size;
 extern int rank;
-const int size_ = 5; // TODO: what is this?
+
+extern T *input;
+extern T *output;
 
 void check_cuda(cudaError_t);
 int get_device();
@@ -564,7 +566,7 @@ std::shared_ptr<WorkUCC> alltoall() {
     coll.dst.info.datatype = UCC_DT_UINT8;
     coll.dst.info.mem_type = UCC_MEMORY_TYPE_CUDA;
   } else {
-    data = new AlltoallWorkData(size_);
+    data = new AlltoallWorkData(N);
     // TODO: migrate this
     // c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
     // c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);

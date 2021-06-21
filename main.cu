@@ -7,7 +7,7 @@
 
 #include "utils.hpp"
 
-const int N = 5;
+int N = 5;
 using T = int;
 int world_size;
 int rank;
@@ -32,21 +32,19 @@ void set_device(int i) {
   check_cuda(cudaSetDevice(i));
 }
 
-std::vector<T *> buffers;
+T *input;
+T *output;
 
 void allocate_buffers() {
-  for (int i = 0; i < world_size; i++) {
-    void *ptr;
-    check_cuda(cudaMalloc(&ptr, sizeof(T) * N));
-    buffers.push_back(reinterpret_cast<T *>(ptr));
-  }
+  check_cuda(cudaMalloc(&input, sizeof(T) * N * world_size));
+  check_cuda(cudaMalloc(&output, sizeof(T) * N * world_size));
 }
 
 __global__ void write_value(T *ptr, T value) {
   *ptr = value;
 }
 
-void initialize_buffers() {
+void initialize_input() {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<int> d(0, N * world_size);
@@ -54,16 +52,17 @@ void initialize_buffers() {
   for (int i = 0; i < world_size; i++) {
     for (int j = 0; j < N; j++) {
       T value = (i == rank ? d(gen): 0);
-      write_value<<<1, 1>>>(buffers[i] + j, value);
+      write_value<<<1, 1>>>(input + N * i + j, value);
     }
   }
 }
 
-void print_buffers() {
+template<typename T>
+void print_buffer(T *ptr) {
   cudaDeviceSynchronize();
   for (int i = 0; i < world_size; i++) {
     T *host = new T[N];
-    check_cuda(cudaMemcpy(host, buffers[i], sizeof(T) * N, cudaMemcpyDefault));
+    check_cuda(cudaMemcpy(host, ptr + N * i, sizeof(T) * N, cudaMemcpyDefault));
     for (int j = 0; j < N; j++) {
       std::cout << host[j] << ", ";
     }
@@ -83,12 +82,12 @@ int main(int argc, char *argv[]) {
   set_device();
 
   allocate_buffers();
-  initialize_buffers();
+  initialize_input();
   std::cout << std::endl << "Buffers initialized as:" << std::endl;
-  print_buffers();
+  print_buffer(input);
 
   alltoall();
 
   std::cout << std::endl << "After alltoall, buffers are:" << std::endl;
-  print_buffers();
+  print_buffer(output);
 }
