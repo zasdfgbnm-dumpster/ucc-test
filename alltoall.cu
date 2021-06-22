@@ -162,8 +162,8 @@ void create_team() {
 
 void create_cuda_ee() {
   ucc_status_t st;
-  stream = std::make_shared<cudaStream_t>(getStreamFromPool());
   ucc_ee_params_t params;
+  stream = std::make_shared<cudaStream_t>(getStreamFromPool());
   params.ee_type = UCC_EE_CUDA_STREAM;
   params.ee_context = (void *)(*stream);
   params.ee_context_size = sizeof(cudaStream_t);
@@ -210,6 +210,7 @@ void create_request() {
 void alltoall() {
   ucc::create_context();
   ucc::create_team();
+
   ucc::create_cuda_ee();
   ucc::compute_lengths_and_offsets();
   ucc::create_request();
