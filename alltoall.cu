@@ -235,6 +235,7 @@ void triggered_post() {
   while (request->status > 0) {
     ucc_context_progress(context);
   }
+  cudaStreamWaitEvent(getCurrentCUDAStream(), *cuda_ev);
   ucc_collective_finalize(request);
   std::cout << rank_string() << "[UCC] request finalized." << std::endl;
 }
