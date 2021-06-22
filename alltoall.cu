@@ -230,24 +230,14 @@ void triggered_post() {
   ucc_ee_ack_event(cuda_ee, post_ev);
   check(st == UCC_OK, "Bug???");
   std::cout << rank_string() << "[UCC] triggered_post succeed." << std::endl;
-}
 
-// std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
-//     ucc_coll_args_t &coll, std::unique_ptr<WorkData> data, ucc_team_h &team,
-//     ucc_ee_h ee, std::unique_ptr<cudaEvent_t> cuda_ev,
-//     const cudaStream_t &stream, event_pool_t *ep) {
-//   auto work = std::make_shared<WorkUCC>(UCC_INPROGRESS, request, ee, &ucc_comm);
-//   work->data = std::move(data);
-//   work->ep = ep;
-//   check_cuda(cudaEventRecord(*cuda_ev, stream));
-//   work->fence = std::move(cuda_ev);
-//   std::unique_lock<std::mutex> lock(mutex);
-//   progress_queue.push_back(work);
-//   lock.unlock();
-//   queue_produce_cv.notify_one();
-//   std::cout << "enqueue_cuda_collective succeed." << std::endl;
-//   return work;
-// }
+  check_cuda(cudaEventRecord(*cuda_ev, *stream));
+  while (request->status > 0) {
+    ucc_context_progress(context);
+  }
+  ucc_collective_finalize(request);
+  std::cout << rank_string() << "[UCC] request finalized." << std::endl;
+}
 
 } // namespace ucc
 
@@ -259,6 +249,4 @@ void alltoall() {
   ucc::compute_lengths_and_offsets();
   ucc::create_request();
   ucc::triggered_post();
-
-  std::this_thread::sleep_for(std::chrono::seconds(1));
 }
