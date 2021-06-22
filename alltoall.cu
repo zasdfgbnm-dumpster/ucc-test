@@ -19,7 +19,7 @@ extern T *input;
 extern T *output;
 extern int N;
 
-ucc_datatype_t dtype = UCC_DT_FLOAT32;
+ucc_datatype_t dtype = UCC_DT_INT32;
 
 Store store{false};
 

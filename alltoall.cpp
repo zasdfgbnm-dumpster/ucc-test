@@ -20,7 +20,7 @@ extern T *input;
 extern T *output;
 extern int N;
 
-ucc_datatype_t dtype = UCC_DT_FLOAT32;
+ucc_datatype_t dtype = UCC_DT_INT32;
 
 Store store{false};
 
@@ -161,7 +161,7 @@ void compute_lengths_and_offsets() {
   }
 }
 
-void create_request() {
+void alltoall() {
   ucc_coll_args_t coll;
 
   coll.mask = UCC_COLL_ARGS_FIELD_FLAGS;
@@ -185,10 +185,8 @@ void create_request() {
   check(st == UCC_OK,
         std::string("failed to init collective: ") + ucc_status_string(st));
   std::cout << rank_string() << "[UCC] Request created." << std::endl;
-}
 
-void post() {
-  ucc_status_t st = ucc_collective_post(request);
+  st = ucc_collective_post(request);
   check(st == UCC_OK,
         std::string("failed to ucc_collective_post collective: ") + ucc_status_string(st));
   std::cout << rank_string() << "[UCC] request posted." << std::endl;
@@ -201,6 +199,29 @@ void post() {
   std::cout << rank_string() << "[UCC] request finalized." << std::endl;
 }
 
+void allreduce() {
+  ucc_coll_args_t args;
+  ucc_coll_req_h req;
+
+  args.mask = UCC_COLL_ARGS_FIELD_PREDEFINED_REDUCTIONS;
+  args.coll_type = UCC_COLL_TYPE_ALLREDUCE;
+  args.reduce.predefined_op = UCC_OP_SUM;
+  args.src.info.buffer = input;
+  args.src.info.count = N;
+  args.src.info.datatype = dtype;
+  args.src.info.mem_type = UCC_MEMORY_TYPE_HOST;
+  args.dst.info.buffer = output;
+  args.dst.info.count = N;
+  args.dst.info.datatype = dtype;
+  args.dst.info.mem_type = UCC_MEMORY_TYPE_HOST;
+  ucc_collective_init(&args, &req, team);
+  ucc_collective_post(req);
+  do {
+    ucc_context_progress(context);
+  } while (ucc_collective_test(req) == UCC_INPROGRESS);
+  ucc_collective_finalize(req);
+}
+
 } // namespace ucc
 
 void alltoall() {
@@ -208,6 +229,12 @@ void alltoall() {
   ucc::create_team();
 
   ucc::compute_lengths_and_offsets();
-  ucc::create_request();
-  ucc::post();
+  ucc::alltoall();
+}
+
+void allreduce() {
+  ucc::create_context();
+  ucc::create_team();;
+
+  ucc::allreduce();
 }
