@@ -232,9 +232,28 @@ void triggered_post() {
   std::cout << rank_string() << "[UCC] triggered_post succeed." << std::endl;
 
   check_cuda(cudaEventRecord(*cuda_ev, *stream));
-  while (ucc_collective_test(request) == UCC_INPROGRESS) {
-    ucc_context_progress(context);
-  }
+  do {
+      ucc_context_progress(context);
+  } while (ucc_collective_test(request) == UCC_INPROGRESS);
+  cudaStreamWaitEvent(getCurrentCUDAStream(), *cuda_ev);
+  ucc_collective_finalize(request);
+  std::cout << rank_string() << "[UCC] request finalized." << std::endl;
+}
+
+void post() {
+  cuda_ev = std::make_shared<cudaEvent_t>();
+  check_cuda(cudaEventCreate(cuda_ev.get()));
+  auto current_stream = getCurrentCUDAStream();
+  check_cuda(cudaEventRecord(*cuda_ev, current_stream));
+  check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
+  std::cout << rank_string() << "[UCC] Sync stream." << std::endl;
+
+  ucc_collective_post(request);
+
+  check_cuda(cudaEventRecord(*cuda_ev, *stream));
+  do {
+      ucc_context_progress(context);
+  } while (ucc_collective_test(request) == UCC_INPROGRESS);
   cudaStreamWaitEvent(getCurrentCUDAStream(), *cuda_ev);
   ucc_collective_finalize(request);
   std::cout << rank_string() << "[UCC] request finalized." << std::endl;
@@ -249,5 +268,6 @@ void alltoall() {
   ucc::create_cuda_ee();
   ucc::compute_lengths_and_offsets();
   ucc::create_request();
-  ucc::triggered_post();
+  // ucc::triggered_post();
+  ucc::post();
 }
