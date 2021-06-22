@@ -10,7 +10,6 @@
 #include <cstring>
 
 #include <ucc/api/ucc.h>
-#include <ucp/api/ucp.h>
 
 #include "utils.hpp"
 
