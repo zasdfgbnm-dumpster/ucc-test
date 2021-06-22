@@ -18,6 +18,9 @@ extern int world_size;
 extern int rank;
 extern T *input;
 extern T *output;
+extern int N;
+
+ucc_datatype_t dtype = UCC_DT_FLOAT32;
 
 Store store{false};
 
@@ -25,11 +28,21 @@ std::string rank_string() {
   return std::string("[") + std::to_string(rank) + "]";
 }
 
+cudaStream_t getStreamFromPool();
+cudaStream_t getCurrentCUDAStream();
+
 namespace ucc {
 
 ucc_lib_h lib;
 ucc_context_h context;
 ucc_team_h team;
+ucc_ee_h cuda_ee;
+ucc_coll_req_h request;
+
+std::shared_ptr<cudaStream_t> stream;
+
+std::vector<ucc_count_t> lengths;
+std::vector<ucc_aint_t> offsets;
 
 struct torch_ucc_oob_coll_info_t {
   void *rbuf;
@@ -147,11 +160,59 @@ void create_team() {
   std::cout << rank_string() << "[UCC] Team created." << std::endl;
 }
 
+void create_cuda_ee() {
+  ucc_status_t st;
+  stream = std::make_shared<cudaStream_t>(getStreamFromPool());
+  ucc_ee_params_t params;
+  params.ee_type = UCC_EE_CUDA_STREAM;
+  params.ee_context = (void *)(*stream);
+  params.ee_context_size = sizeof(cudaStream_t);
+  st = ucc_ee_create(team, &params, &cuda_ee);
+  check(st == UCC_OK,
+        std::string("failed to create UCC EE: ") + ucc_status_string(st));
+}
+
+void compute_lengths_and_offsets() {
+  for (int i = 0; i < world_size; i++) {
+    lengths.push_back(N);
+    offsets.push_back(N * i);
+  }
+}
+
+void create_request() {
+  ucc_coll_args_t coll;
+
+  coll.mask = UCC_COLL_ARGS_FIELD_FLAGS;
+  coll.coll_type = UCC_COLL_TYPE_ALLTOALLV;
+
+  coll.src.info_v.buffer = input;
+  coll.src.info_v.counts = lengths.data();
+  coll.src.info_v.displacements = offsets.data();
+  coll.src.info_v.datatype = dtype;
+  coll.src.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
+
+  coll.dst.info_v.buffer = output;
+  coll.dst.info_v.counts = lengths.data();
+  coll.dst.info_v.displacements = offsets.data();
+  coll.dst.info_v.datatype = dtype;
+  coll.dst.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
+  coll.flags = UCC_COLL_ARGS_FLAG_CONTIG_SRC_BUFFER |
+               UCC_COLL_ARGS_FLAG_CONTIG_DST_BUFFER;
+
+  ucc_status_t st;
+  st = ucc_collective_init(&coll, &request, team);
+  check(st == UCC_OK,
+        std::string("failed to init collective: ") + ucc_status_string(st));
+}
+
 } // namespace ucc
 
 void alltoall() {
   ucc::create_context();
   ucc::create_team();
+  ucc::create_cuda_ee();
+  ucc::compute_lengths_and_offsets();
+  ucc::create_request();
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 }
