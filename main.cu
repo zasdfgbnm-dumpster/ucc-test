@@ -86,6 +86,7 @@ void print_buffer(T *ptr) {
 }
 
 void alltoall();
+void allreduce();
 
 int main(int argc, char *argv[]) {
   check(argc == 3, "Bad argument");
@@ -102,7 +103,8 @@ int main(int argc, char *argv[]) {
   std::cout << std::endl << "Buffers initialized as:" << std::endl;
   print_buffer(input);
 
-  alltoall();
+  // alltoall();
+  allreduce();
   cudaDeviceSynchronize();
 
   std::this_thread::sleep_for(std::chrono::seconds(rank));

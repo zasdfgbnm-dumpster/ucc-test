@@ -181,7 +181,7 @@ void compute_lengths_and_offsets() {
   }
 }
 
-void create_request() {
+void create_request_alltoall() {
   ucc_coll_args_t coll;
 
   coll.mask = UCC_COLL_ARGS_FIELD_FLAGS;
@@ -200,6 +200,27 @@ void create_request() {
   coll.dst.info_v.mem_type = UCC_MEMORY_TYPE_CUDA;
   coll.flags = UCC_COLL_ARGS_FLAG_CONTIG_SRC_BUFFER |
                UCC_COLL_ARGS_FLAG_CONTIG_DST_BUFFER;
+
+  ucc_status_t st = ucc_collective_init(&coll, &request, team);
+  check(st == UCC_OK,
+        std::string("failed to init collective: ") + ucc_status_string(st));
+  std::cout << rank_string() << "[UCC] Request created." << std::endl;
+}
+
+void create_request_allreduce() {
+  ucc_coll_args_t coll;
+
+  coll.mask = UCC_COLL_ARGS_FIELD_PREDEFINED_REDUCTIONS;
+  coll.coll_type = UCC_COLL_TYPE_ALLREDUCE;
+  coll.reduce.predefined_op = UCC_OP_SUM;
+  coll.src.info.buffer = input;
+  coll.src.info.count = N;
+  coll.src.info.datatype = dtype;
+  coll.src.info.mem_type = UCC_MEMORY_TYPE_CUDA;
+  coll.dst.info.buffer = output;
+  coll.dst.info.count = N;
+  coll.dst.info.datatype = dtype;
+  coll.dst.info.mem_type = UCC_MEMORY_TYPE_CUDA;
 
   ucc_status_t st = ucc_collective_init(&coll, &request, team);
   check(st == UCC_OK,
@@ -266,7 +287,17 @@ void alltoall() {
 
   ucc::create_cuda_ee();
   ucc::compute_lengths_and_offsets();
-  ucc::create_request();
+  ucc::create_request_alltoall();
+  // ucc::triggered_post();
+  ucc::post();
+}
+
+void allreduce() {
+  ucc::create_context();
+  ucc::create_team();
+
+  ucc::create_cuda_ee();
+  ucc::create_request_allreduce();
   // ucc::triggered_post();
   ucc::post();
 }
