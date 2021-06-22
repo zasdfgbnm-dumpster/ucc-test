@@ -28,6 +28,8 @@ std::string rank_string() {
   return std::string("[") + std::to_string(rank) + "]";
 }
 
+void check_cuda(cudaError_t);
+
 cudaStream_t getStreamFromPool();
 cudaStream_t getCurrentCUDAStream();
 
@@ -40,6 +42,7 @@ ucc_ee_h cuda_ee;
 ucc_coll_req_h request;
 
 std::shared_ptr<cudaStream_t> stream;
+std::shared_ptr<cudaEvent_t> cuda_ev;
 
 std::vector<ucc_count_t> lengths;
 std::vector<ucc_aint_t> offsets;
@@ -161,15 +164,15 @@ void create_team() {
 }
 
 void create_cuda_ee() {
-  ucc_status_t st;
   ucc_ee_params_t params;
   stream = std::make_shared<cudaStream_t>(getStreamFromPool());
   params.ee_type = UCC_EE_CUDA_STREAM;
   params.ee_context = (void *)(*stream);
   params.ee_context_size = sizeof(cudaStream_t);
-  st = ucc_ee_create(team, &params, &cuda_ee);
+  ucc_status_t st = ucc_ee_create(team, &params, &cuda_ee);
   check(st == UCC_OK,
         std::string("failed to create UCC EE: ") + ucc_status_string(st));
+  std::cout << rank_string() << "[UCC] CUDA ee created." << std::endl;
 }
 
 void compute_lengths_and_offsets() {
@@ -199,11 +202,55 @@ void create_request() {
   coll.flags = UCC_COLL_ARGS_FLAG_CONTIG_SRC_BUFFER |
                UCC_COLL_ARGS_FLAG_CONTIG_DST_BUFFER;
 
-  ucc_status_t st;
-  st = ucc_collective_init(&coll, &request, team);
+  ucc_status_t st = ucc_collective_init(&coll, &request, team);
   check(st == UCC_OK,
         std::string("failed to init collective: ") + ucc_status_string(st));
+  std::cout << rank_string() << "[UCC] Request created." << std::endl;
 }
+
+void sync_streams() {
+  cuda_ev = std::make_shared<cudaEvent_t>();
+  check_cuda(cudaEventCreate(cuda_ev.get()));
+
+  auto current_stream = getCurrentCUDAStream();
+  check_cuda(cudaEventRecord(*cuda_ev, current_stream));
+  check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
+  std::cout << rank_string() << "[UCC] Sync stream." << std::endl;
+}
+
+void triggered_post() {
+  ucc_ev_t comp_ev;
+  comp_ev.ev_type = UCC_EVENT_COMPUTE_COMPLETE;
+  comp_ev.ev_context = nullptr;
+  comp_ev.ev_context_size = 0;
+  comp_ev.req = request;
+  ucc_status_t st = ucc_collective_triggered_post(cuda_ee, &comp_ev);
+  check(st == UCC_OK, std::string("failed to post triggered collective: ") + ucc_status_string(st));
+
+  ucc_ev_t *post_ev;
+  st = ucc_ee_get_event(cuda_ee, &post_ev);
+  check(st == UCC_OK && post_ev->ev_type == UCC_EVENT_COLLECTIVE_POST, "Bug???");
+  ucc_ee_ack_event(cuda_ee, post_ev);
+  check(st == UCC_OK, "Bug???");
+  std::cout << rank_string() << "[UCC] triggered_post succeed." << std::endl;
+}
+
+// std::shared_ptr<WorkUCC> CommPG::enqueue_cuda_collective(
+//     ucc_coll_args_t &coll, std::unique_ptr<WorkData> data, ucc_team_h &team,
+//     ucc_ee_h ee, std::unique_ptr<cudaEvent_t> cuda_ev,
+//     const cudaStream_t &stream, event_pool_t *ep) {
+//   auto work = std::make_shared<WorkUCC>(UCC_INPROGRESS, request, ee, &ucc_comm);
+//   work->data = std::move(data);
+//   work->ep = ep;
+//   check_cuda(cudaEventRecord(*cuda_ev, stream));
+//   work->fence = std::move(cuda_ev);
+//   std::unique_lock<std::mutex> lock(mutex);
+//   progress_queue.push_back(work);
+//   lock.unlock();
+//   queue_produce_cv.notify_one();
+//   std::cout << "enqueue_cuda_collective succeed." << std::endl;
+//   return work;
+// }
 
 } // namespace ucc
 
@@ -214,6 +261,8 @@ void alltoall() {
   ucc::create_cuda_ee();
   ucc::compute_lengths_and_offsets();
   ucc::create_request();
+  ucc::sync_streams();
+  ucc::triggered_post();
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 }
