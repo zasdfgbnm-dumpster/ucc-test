@@ -232,7 +232,7 @@ void triggered_post() {
   std::cout << rank_string() << "[UCC] triggered_post succeed." << std::endl;
 
   check_cuda(cudaEventRecord(*cuda_ev, *stream));
-  while (request->status > 0) {
+  while (ucc_collective_test(request) == UCC_INPROGRESS) {
     ucc_context_progress(context);
   }
   cudaStreamWaitEvent(getCurrentCUDAStream(), *cuda_ev);
