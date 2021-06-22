@@ -208,17 +208,14 @@ void create_request() {
   std::cout << rank_string() << "[UCC] Request created." << std::endl;
 }
 
-void sync_streams() {
+void triggered_post() {
   cuda_ev = std::make_shared<cudaEvent_t>();
   check_cuda(cudaEventCreate(cuda_ev.get()));
-
   auto current_stream = getCurrentCUDAStream();
   check_cuda(cudaEventRecord(*cuda_ev, current_stream));
   check_cuda(cudaStreamWaitEvent(*stream, *cuda_ev));
   std::cout << rank_string() << "[UCC] Sync stream." << std::endl;
-}
 
-void triggered_post() {
   ucc_ev_t comp_ev;
   comp_ev.ev_type = UCC_EVENT_COMPUTE_COMPLETE;
   comp_ev.ev_context = nullptr;
@@ -261,7 +258,6 @@ void alltoall() {
   ucc::create_cuda_ee();
   ucc::compute_lengths_and_offsets();
   ucc::create_request();
-  ucc::sync_streams();
   ucc::triggered_post();
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
