@@ -189,9 +189,13 @@ void create_request() {
 }
 
 void post() {
-  ucc_collective_post(request);
+  ucc_status_t st = ucc_collective_post(request);
+  check(st == UCC_OK,
+        std::string("failed to ucc_collective_post collective: ") + ucc_status_string(st));
   do {
-      ucc_context_progress(context);
+    st = ucc_context_progress(context);
+    check(st == UCC_OK,
+          std::string("failed to ucc_collective_post collective: ") + ucc_status_string(st));
   } while (ucc_collective_test(request) == UCC_INPROGRESS);
   ucc_collective_finalize(request);
   std::cout << rank_string() << "[UCC] request finalized." << std::endl;
