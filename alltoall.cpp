@@ -192,6 +192,7 @@ void post() {
   ucc_status_t st = ucc_collective_post(request);
   check(st == UCC_OK,
         std::string("failed to ucc_collective_post collective: ") + ucc_status_string(st));
+  std::cout << rank_string() << "[UCC] request posted." << std::endl;
   do {
     st = ucc_context_progress(context);
     check(st == UCC_OK,
